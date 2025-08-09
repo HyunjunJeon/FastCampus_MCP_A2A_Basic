@@ -278,74 +278,6 @@ async def run_a2a_deep_research(
             "system_type": "A2A 딥리서치",
         }
 
-
-async def check_servers():
-    """실행 전 서버 상태 체크 (고급 검증 포함)"""
-    print("🔍 시스템 사전 체크 (고급 검증 포함)")
-    print("-" * 40)
-
-    try:
-        # 고급 검증기 사용
-        from examples.deep_research_validator import DeepResearchValidator
-
-        validator = DeepResearchValidator()
-
-        # 기본 검증만 실행 (빠른 체크)
-        validation_result = await validator.validate_system(run_full_test=False)
-
-        # 검증 결과를 기존 형식으로 변환
-        mcp_running = [
-            server.port
-            for server in validation_result.mcp_servers
-            if server.status.value == "running"
-        ]
-        a2a_running = validation_result.a2a_server.status.value == "running"
-
-        # 상세 결과 출력
-        print("\n📊 고급 검증 결과:")
-        for server in validation_result.mcp_servers:
-            status_emoji = "✅" if server.status.value == "running" else "❌"
-            print(
-                f"   {status_emoji} {server.name} (포트 {server.port}): {server.status.value}"
-            )
-            if server.response_time_ms:
-                print(f"      응답시간: {server.response_time_ms:.0f}ms")
-            if server.error_message:
-                print(f"      오류: {server.error_message}")
-
-        status_emoji = "✅" if a2a_running else "❌"
-        print(
-            f"   {status_emoji} A2A 서버 (포트 8080): {validation_result.a2a_server.status.value}"
-        )
-        if validation_result.a2a_server.response_time_ms:
-            print(
-                f"      응답시간: {validation_result.a2a_server.response_time_ms:.0f}ms"
-            )
-        if validation_result.a2a_server.error_message:
-            print(f"      오류: {validation_result.a2a_server.error_message}")
-
-        # 권장사항이 있으면 출력
-        if (
-            validation_result.recommendations
-            and len(validation_result.recommendations) > 1
-        ):
-            print("\n💡 권장사항:")
-            for rec in validation_result.recommendations[:3]:  # 처음 3개만
-                if rec.strip():
-                    print(f"   {rec}")
-
-        return {
-            "mcp_servers": mcp_running,
-            "a2a_server": a2a_running,
-            "validation_result": validation_result,
-        }
-
-    except ImportError:
-        return await check_servers_basic()
-    except Exception:
-        return await check_servers_basic()
-
-
 async def check_servers_basic():
     """기본 서버 상태 체크"""
     # MCP 서버 체크 (3000, 3001, 3002 포트)
@@ -369,27 +301,11 @@ async def check_servers_basic():
         except Exception:
             print(f"❌ MCP 서버 포트 {port}: 연결 실패")
 
-    # A2A 서버 체크 (8080 포트)
-    a2a_running = False
-    try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(1)
-        result = sock.connect_ex(("localhost", 8080))
-        sock.close()
-
-        if result == 0:
-            a2a_running = True
-            print("✅ A2A 서버 포트 8080: 실행 중")
-        else:
-            print("❌ A2A 서버 포트 8080: 실행 안됨")
-    except Exception:
-        print("❌ A2A 서버 포트 8080: 연결 실패")
 
     print("\n📊 체크 결과:")
     print(f"   MCP 서버: {len(mcp_running)}/{len(mcp_ports)} 개 실행 중")
-    print(f"   A2A 서버: {'실행 중' if a2a_running else '실행 안됨'}")
 
-    return {"mcp_servers": mcp_running, "a2a_server": a2a_running}
+    return {"mcp_servers": mcp_running}
 
 
 async def run_comparison(endpoints: dict[str, str] | None = None):
@@ -410,7 +326,7 @@ async def run_comparison(endpoints: dict[str, str] | None = None):
     print()
 
     # 서버 상태 사전 체크
-    server_status = await check_servers()
+    server_status = await check_servers_basic()
     print()
 
     # MCP 서버가 실행 중이지 않으면 경고
@@ -425,8 +341,8 @@ async def run_comparison(endpoints: dict[str, str] | None = None):
     # 1. LangGraph 딥리서치 실행
     langgraph_result = await run_langgraph_deep_research(query)
 
-    # 잠시 대기 (시스템 간 격리)
-    await asyncio.sleep(1)
+    # 잠시 대기 (시스템 간 격리를 위함)
+    await asyncio.sleep(2)
 
     # 2. A2A 딥리서치 실행
     a2a_result = await run_a2a_deep_research(query, endpoints=endpoints)
@@ -482,7 +398,7 @@ async def run_comparison(endpoints: dict[str, str] | None = None):
         if not server_status["a2a_server"]:
             print("   🌐 A2A 서버가 실행되지 않음")
             print(
-                "      → 그래프 기반 임베디드 서버 사용 권장: start_embedded_graph_server(...)"
+                "      → 테스트 용도로는 임베디드 서버 사용 권장: start_embedded_graph_server(...)"
             )
 
         if langgraph_result["success"] and not a2a_result["success"]:

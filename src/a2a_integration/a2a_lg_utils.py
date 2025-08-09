@@ -38,7 +38,7 @@ def _build_request_handler(executor: AgentExecutor) -> DefaultRequestHandler:
     )
     return DefaultRequestHandler(
         agent_executor=executor,
-        task_store=InMemoryTaskStore(),
+        task_store=InMemoryTaskStore(), # TODO: 메모리 기반이 아닌 데이터베이스 기반으로 변경 필요
         push_config_store=push_config_store,
         push_sender=push_sender,
     )

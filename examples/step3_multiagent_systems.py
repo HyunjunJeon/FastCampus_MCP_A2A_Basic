@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """
 Step 3: Deep Research 시스템 비교 - LangGraph vs A2A
 
@@ -98,8 +97,7 @@ class MultiAgentSystemLauncher:
         """
         safe_print("\n🧹 임베디드 서버들 정리 중...")
         
-        # Context Manager들이 자동으로 정리됨
-        # (Context Manager 블록을 벗어날 때 __aexit__ 호출)
+        # Context Manager들이 자동으로 정리됨 (Context Manager 블록을 벗어날 때 __aexit__ 호출)
         self.embedded_managers.clear()
         self.server_infos.clear()
         
@@ -120,7 +118,7 @@ class MultiAgentSystemLauncher:
         """
         safe_print("\n🔍 MCP 서버 Health Check 중...")
 
-        # MCP 서버 URL 목록 (도커에서 실행 중인 경우)
+        # MCP 서버 URL 목록 (도커에서 실행 중)
         mcp_servers = [
             "http://localhost:3000/health",
             "http://localhost:3001/health",
@@ -167,13 +165,14 @@ class MultiAgentSystemLauncher:
             skills = [
                 AgentSkill(
                     id="deep_research",
-                    name="Deep Research",
+                    name="Deep Research Agent",
                     description="Deep research pipeline",
-                    tags=["research"],
+                    tags=["research", "agent"],
                     examples=["Run full deep research pipeline"],
                 )
             ]
-            # 고정 포트/호스트로 시작하여 AgentCard.url과 일치시킵니다.
+            
+            # 고정 포트/호스트로 시작하여 AgentCard.url과 일치시킴
             port = 8010
             host = "0.0.0.0"
             agent_card = create_agent_card(
@@ -182,7 +181,7 @@ class MultiAgentSystemLauncher:
                 url=f"http://{host}:{port}",
                 version="1.0.0",
                 skills=skills,
-                default_input_modes=["text"],
+                default_input_modes=["text/plain"],
                 default_output_modes=["text/plain"],
                 streaming=True,
                 push_notifications=True,
@@ -229,7 +228,6 @@ async def run_actual_comparison_with_endpoints(endpoints: dict[str, str] | None 
 
     try:
         # 비교 시스템 모듈 임포트
-        # - examples.compare_systems 모듈에서 실제 비교 실험 수행 함수 import
         from examples.compare_systems import run_comparison
 
         safe_print("\n📈 시스템 비교 실행 중...")
@@ -307,18 +305,13 @@ async def main():
         # 3. 실제 시스템 시작 및 상태 확인
         safe_print("\n🚀 멀티에이전트 시스템 시작 (임베디드 서버 방식)")
         safe_print("=" * 60)
-        safe_print("� 단계 1: MCP 서버들 Health check")
-
-        # MCP 서버들 Health check
-        launcher.health_check_mcp_servers()
-
-        safe_print("\n🤖 단계 2: A2A 에이전트들 임베디드 서버로 안전 시작")
+        safe_print("\n🤖 단계 1: A2A 에이전트들 임베디드 서버로 안전 시작")
 
         # A2A 에이전트들을 임베디드 서버로 시작
         embedded_agents = await launcher.start_a2a_embedded_agents()
 
         # 시스템 상태 종합 확인
-        safe_print("\n📋 단계 3: 시스템 상태 종합 확인")
+        safe_print("\n📋 단계 2: 시스템 상태 종합 확인")
         safe_print("   모든 서버와 에이전트들의 정상 가동 여부 검사 중...")
         
         # Context Manager들이 활성 상태인지 확인

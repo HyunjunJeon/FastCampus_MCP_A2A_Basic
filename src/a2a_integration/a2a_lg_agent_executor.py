@@ -4,7 +4,6 @@ LangGraph Agent를 A2A 프로토콜로 래핑하는 AgentExecutor 구현
 """
 
 from datetime import datetime
-import uuid
 
 from typing import Any, Callable
 from langgraph.graph.state import CompiledStateGraph
@@ -16,7 +15,7 @@ from a2a.server.events import EventQueue
 from a2a.server.tasks import TaskUpdater
 from a2a.types import InternalError, InvalidParamsError, Part, TaskState, TextPart, UnsupportedOperationError
 from a2a.utils import new_agent_text_message, new_task
-from a2a.utils.errors import ServerError
+from a2a.utils.errors import ServerError, TaskNotFoundError
 
 logger = get_logger(__name__)
 
@@ -173,7 +172,6 @@ class LangGraphWrappedA2AExecutor(AgentExecutor):
         messages = result.get("messages")
         if isinstance(messages, list) and messages:
             try:
-                from langchain_core.messages import BaseMessage
                 # 마지막 AI 메시지 우선
                 filtered = filter_messages(messages, include_types=[AIMessage])
                 if filtered:
@@ -219,6 +217,10 @@ class LangGraphWrappedA2AExecutor(AgentExecutor):
             await event_queue.enqueue_event(task)
 
         updater = TaskUpdater(event_queue, task.id, task.context_id)
+        await updater.update_status(
+            TaskState.submitted,
+            new_agent_text_message("A2A Agent 요청 인입 완료", task.context_id, task.id),
+        )
 
         try:
             logger.info(f"A2A Agent 요청 처리 시작 - 유저 질의:{query}")
@@ -227,6 +229,11 @@ class LangGraphWrappedA2AExecutor(AgentExecutor):
 
             last_result: Any | None = None
             accumulated_text: str = ""
+            # NOTE: 랭그래프를 astream 으로 실행
+            await updater.update_status(
+                TaskState.working,
+                new_agent_text_message("A2A Agent 요청 처리 중...", task.context_id, task.id),
+            )   
             async for chunk in self.graph.astream({"messages": [HumanMessage(content=query)]}):
                 last_result = chunk
                 try:
@@ -261,10 +268,10 @@ class LangGraphWrappedA2AExecutor(AgentExecutor):
 
             await updater.add_artifact(
                 [Part(root=TextPart(text=final_text))],
-                artifact_id=str(uuid.uuid4()),
-                name='graph_result',
+                # artifact_id=str(uuid.uuid4()), # 안줘도 내부에서 만들어줌
+                name='result',
             )
-            await updater.complete()
+            await updater.complete(new_agent_text_message(final_text, task.context_id, task.id))
 
         except Exception as e:
             logger.error(f'A2A 실행 중 오류: {e}')
@@ -276,16 +283,12 @@ class LangGraphWrappedA2AExecutor(AgentExecutor):
         event_queue: EventQueue
     ) -> None:
         task = context.current_task
+        if not task:
+            raise ServerError(error=TaskNotFoundError())
+
         updater = TaskUpdater(event_queue, task.id, task.context_id)
         message = new_agent_text_message("사용자의 요청으로 작업이 취소되었습니다.", task.context_id, task.id)
         await event_queue.enqueue_event(message)
-        await updater.update_status(
-            TaskState.canceled,
-            message,
-            final=True,
-            timestamp=datetime.now().isoformat(),
-        )
-        await updater.complete()
-        raise ServerError(error=UnsupportedOperationError())
+        await updater.cancel(message)
 
 

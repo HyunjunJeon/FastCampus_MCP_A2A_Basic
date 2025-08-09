@@ -11,7 +11,7 @@ import uvicorn
 import time
 
 from .a2a_lg_utils import to_a2a_starlette_server
-from a2a.types import AgentCard, AgentSkill
+from a2a.types import AgentCard
 from langgraph.graph.state import CompiledStateGraph
 
 logger = get_logger(__name__)

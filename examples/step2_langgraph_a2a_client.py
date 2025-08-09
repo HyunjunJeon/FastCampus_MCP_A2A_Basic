@@ -3,7 +3,7 @@
 Step 2: LangGraph + A2A 통합
 
 === 학습 목표 ===
-LangGraph 에이전트를 A2A(Agent-to-Agent) 스펙에 맞게 래핑하여
+LangGraph 에이전트를 A2A(Agent-to-Agent) 스펙에 맞게 래핑(Wrapping)하여
 표준화된 에이전트 통신 프로토콜을 구현하는 방법을 학습합니다.
 
 === 구현 내용 ===
@@ -70,9 +70,9 @@ async def test_a2a_agent_client():
     skills = [
         AgentSkill(
             id="simple_langgraph_with_mcp",
-            name="MCP 기반 간단한 검색 에이전트",
-            description="MCP 기반 간단한 검색 에이전트",
-            tags=["simple web search agent"],
+            name="검색 에이전트",
+            description="다양한 검색을 지원하는 에이전트",
+            tags=["search", "agent"],
             examples=["OpenAI 의 가장 최근 오픈소스 공개 모델에 대해 자세히 설명해주세요."],
         )
     ]
@@ -83,8 +83,8 @@ async def test_a2a_agent_client():
     async with start_embedded_graph_server(
         graph=agent.graph,
         agent_card=AgentCard(
-            name="MCP 기반 검색 에이전트",
-            description="MCP 기반 검색 에이전트",
+            name="검색 에이전트",
+            description="다양한 검색을 지원하는 에이전트",
             url=f"http://{host}:{port}",
             capabilities=AgentCapabilities(
                 streaming=True,
@@ -109,7 +109,6 @@ async def test_a2a_agent_client():
             response = await client.send_query(query)
             print(f"  📝 [에이전트 응답] {response}")
             print("===" * 30)
-
             print("\n🎉 모든 A2A 에이전트 통신 테스트 완료!")
 
 

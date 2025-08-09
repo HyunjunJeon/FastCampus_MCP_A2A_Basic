@@ -72,7 +72,7 @@ A2A에서 관리하는 작업의 기본 단위로, 고유한 ID로 식별됩니�
 
 ### 6. Part
 
-Message나 Artifact 내의 가장 작은 콘텐츠 단위입니다 (예: `TextPart`, `FilePart`, `DataPart`).
+Message나 Artifact 내의 가장 작은 콘텐츠 단위입니다.(예: `TextPart`, `FilePart`, `DataPart`).
 
 ### 7. Artifact
 
@@ -84,23 +84,15 @@ Server-Sent Events를 통해 전달되는 작업의 실시간, 증분 업데이�
 
 ### 9. Push Notifications
 
-장기 실행 또는 연결이 끊어진 시나리오를 위해 서버가 시작하는 HTTP POST 요청을 통해 전달되는 비동기 작업 업데이트.
-
-### 10. Context
-
-관련 작업을 논리적으로 그룹화하기 위한 서버 생성 식별자 (선택적).
-
-### 11. Extension
-
-에이전트가 핵심 A2A 사양을 넘어서는 추가 기능이나 데이터를 제공하는 메커니즘.
+장기 실행 또는 연결이 끊어진 시나리오를 위해 서버가 시작하는 HTTP POST 요청을 통해 전달되는 비동기 작업 업데이트. Client 의 WebHook URL 이 반드시 필요함.
 
 ## 전송 프로토콜 & 데이터 형식
 
 ### 전송 계층 요구사항
 
-- **HTTPS 필수**: 모든 A2A 통신은 HTTPS를 통해 이루어져야 함
+- **HTTPS 필수**: 모든 A2A 통신은 HTTPS를 통해 이루어져야 함(개발 및 테스트에서만 HTTP 허용)
 - **다중 프로토콜 지원**: 에이전트는 최소 하나의 전송 프로토콜을 구현해야 함
-- **기능적 동등성**: 여러 전송을 지원하는 경우 모든 전송에서 동일한 기능 제공
+- **기능적 동등성**: 여러 전송을 지원하는 경우, 모든 전송에서 동일한 기능 제공
 
 ### 지원되는 전송 프로토콜
 
@@ -133,7 +125,7 @@ Server-Sent Events를 통해 전달되는 작업의 실시간, 증분 업데이�
 - JSON-RPC 2.0 스펙 준수
 - 메소드 이름: `{category}/{action}` 패턴 (예: `message/send`)
 
-#### 2. gRPC Transport
+#### 2. gRPC Transport(v0.3.0 추가)
 
 높은 성능이 필요한 환경을 위한 선택적 프로토콜:
 
@@ -144,7 +136,7 @@ Server-Sent Events를 통해 전달되는 작업의 실시간, 증분 업데이�
 - TLS 암호화 필수
 - HTTP/2 기반
 
-#### 3. HTTP+JSON/REST Transport
+#### 3. HTTP+JSON Transport
 
 RESTful 패턴을 선호하는 환경을 위한 선택적 프로토콜:
 
@@ -157,8 +149,8 @@ POST /v1/tasks/{id}:cancel
 
 **요구사항**:
 
-- 적절한 HTTP 동사 사용 (GET, POST, PUT, DELETE)
-- RESTful URL 패턴 준수
+- 적절한 HTTP Method 사용 (GET, POST, PUT, DELETE)
+- RESTful URI 패턴 준수
 - HTTP 상태 코드 적절히 사용
 
 ### 스트리밍 전송 (Server-Sent Events)
@@ -284,7 +276,7 @@ X-API-Key: <api_key>
 3. 클라이언트가 필요한 자격 증명을 밴드 외에서 획득
 4. 후속 메시지에서 자격 증명 제공
 
-## Agent Card (에이전트 발견)
+## Agent Card (Agent Discovery 의 핵심)
 
 ### 목적
 
@@ -349,6 +341,8 @@ Agent Card는 에이전트의 ID, 기능, 스킬, 서비스 엔드포인트, 인
 
 ### 핵심 필드
 
+직접 구현하지 않고 a2a.types 내에 있는 객체들을 활용한다.
+
 #### AgentCapabilities
 
 ```python
@@ -385,6 +379,8 @@ Agent Card는 에이전트의 ID, 기능, 스킬, 서비스 엔드포인트, 인
 ```
 
 ## 프로토콜 데이터 객체
+
+직접 구현하지 않고 a2a.types 내에 있는 객체들을 활용한다.
 
 ### Task 객체
 
@@ -608,6 +604,8 @@ artifact = Artifact(
 
 ### A2A 특정 에러
 
+A2A SDK 에서 제공하는 공식 에러를 사용 또는 상속받아 커스터마이징 하도록 한다.
+
 | 코드 | 이름 | 설명 |
 |------|------|------|
 | -32001 | TaskNotFoundError | 작업을 찾을 수 없음 |
@@ -701,7 +699,7 @@ if __name__ == "__main__":
     )
 ```
 
-### MCP 통합
+### MCP 통합 -> LangGraph Agent 가 실제 로직 모듈이므로 Step1 과 변화되는건 없음
 
 ```python
 from langchain_mcp_adapters.client import MultiServerMCPClient
@@ -719,13 +717,12 @@ class MCPIntegratedAgent(AgentExecutor):
         user_query = self._extract_text(context.message)
         
         # MCP 도구 사용
-        search_results = await self.mcp_client.call_tool(
-            server_name="tavily",
-            tool_name="search",
-            arguments={"query": user_query}
-        )
+        tools = await self.mcp_client.get_tools()
         
-        # 결과 처리 및 응답
+        # TODO tools 중에서 적절한 툴을 골라서 실행
+
+        
+        # TODO: 결과 처리 및 응답
         response = self.process_results(search_results)
         message = new_agent_text_message(response)
         await event_queue.enqueue_event(message)
@@ -736,8 +733,7 @@ class MCPIntegratedAgent(AgentExecutor):
 ### 기본 클라이언트
 
 ```python
-from a2a.client import ClientFactory, ClientConfig
-from a2a.client.card_resolver import A2ACardResolver
+from a2a.client import ClientFactory, ClientConfig, A2ACardResolver
 import httpx
 
 async def basic_client_example():
@@ -749,11 +745,10 @@ async def basic_client_example():
         # 클라이언트 생성
         config = ClientConfig(httpx_client=http_client, streaming=True)
         factory = ClientFactory(config)
-        client = factory.create_client(agent_card)
+        client = factory.create(agent_card)
         
         # 메시지 전송
-        from a2a.utils import new_user_text_message
-        message = new_user_text_message("안녕하세요!")
+        message = # TODO 메시지 전송 방법 확인 필요(공식 문서 또는 예제 문서 참조)
         response = await client.send_message(message)
         print(f"응답: {response}")
 ```
