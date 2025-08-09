@@ -53,7 +53,7 @@ class SimpleLangGraphWithMCPAgent(BaseGraphAgent):
             max_retry_attempts=max_retry_attempts,
             agent_name=agent_name,
             is_debug=is_debug,
-            auto_build=False,
+            auto_build=False, # NOTE: Key point!
         )
 
         self.llm = model
@@ -79,7 +79,8 @@ class SimpleLangGraphWithMCPAgent(BaseGraphAgent):
         is_debug: bool = True,
     ) -> "SimpleLangGraphWithMCPAgent":
         """
-        비동기 초기화 팩토리. MCP 도구를 await로 로딩한 뒤 그래프를 빌드한다.
+        비동기 초기화 팩토리. 
+        MCP 도구를 await로 로딩한 뒤 그래프를 빌드한다.
         """
         self = cls(
             model=model,
@@ -93,8 +94,8 @@ class SimpleLangGraphWithMCPAgent(BaseGraphAgent):
             agent_name=agent_name,
             is_debug=is_debug,
         )
-        self.tools = await self.mcp_client.get_tools()
-        self.build_graph()
+        self.tools = await self.mcp_client.get_tools() # NOTE: Key point!
+        self.build_graph() # NOTE: 여기서는 자식 그래프에서 호출함.
         return self
 
     def init_nodes(self, graph: StateGraph) -> None:

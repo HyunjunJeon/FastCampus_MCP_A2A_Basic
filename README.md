@@ -202,4 +202,4 @@ uv run pytest tests/test_e2e_step4_playwright.py -q
 
 ## 라이선스
 
-자세한 내용은 `LICENSE` 파일을 참고하세요.
+자세한 내용은 [LICENSE](/LICENSE) 파일을 참고하세요.

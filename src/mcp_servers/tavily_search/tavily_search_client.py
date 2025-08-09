@@ -4,7 +4,7 @@ Tavily 검색 API 시뮬레이션 및 도구
 
 import os
 import logging
-from typing import List, Any, Literal
+from typing import List, Any, Literal, cast
 
 # 환경 변수 검증 시스템 사용
 try:
@@ -113,22 +113,14 @@ class TavilySearchAPI:
             "search_depth": search_depth,
         }
 
-        # 선택적 파라미터 추가 - None이 아닌 값만 포함
-        if topic:
-            search_params["topic"] = topic
-        if time_range:
-            search_params["time_range"] = time_range
-        if start_date:
-            search_params["start_date"] = start_date
-        if end_date:
-            search_params["end_date"] = end_date
-        if days:
-            search_params["days"] = days
-        if include_domains:
-            search_params["include_domains"] = include_domains
-        if exclude_domains:
-            search_params["exclude_domains"] = exclude_domains
+        search_params["topic"] = topic or "general"
+        search_params["time_range"] = time_range or None
+        search_params["start_date"] = start_date or None
+        search_params["end_date"] = end_date or None
+        search_params["days"] = days or None
+        search_params["include_domains"] = include_domains or None
+        search_params["exclude_domains"] = exclude_domains or None
 
         # Tavily API 호출 및 결과 반환
         results = client.search(**search_params)
-        return results
+        return cast(dict[str, Any], results)

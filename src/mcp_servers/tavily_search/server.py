@@ -36,24 +36,6 @@ class TavilySearchServer(BaseMCPServer):
         """
         self.tavily_api = TavilySearchAPI()
 
-    def create_app(self):
-        """
-        HTTP 애플리케이션 생성
-        
-        Tavily 서버용 FastMCP HTTP 애플리케이션을 직접 반환합니다.
-        MCP 프로토콜을 통한 도구 호출을 지원합니다.
-        
-        Returns:
-            FastAPI 애플리케이션 인스턴스
-        """
-        http_app = self.mcp.http_app(
-            path="/mcp",
-            transport=self.transport,
-            json_response=self.json_response,
-            stateless_http=self.stateless_http,
-        )
-        return http_app
-
     def _register_tools(self) -> None:
         """
         MCP 도구 등록
@@ -67,7 +49,7 @@ class TavilySearchServer(BaseMCPServer):
             query: str,
             max_results: int = 5,
             search_depth: Literal["basic", "advanced"] = "basic",
-            topic: Literal["general", "news", "finance"] | None = None,
+            topic: Literal["general"] = "general",
             time_range: Literal["day", "week", "month", "year"] | None = None,
             start_date: str | None = None,
             end_date: str | None = None,
@@ -78,7 +60,7 @@ class TavilySearchServer(BaseMCPServer):
             """
             웹에서 최신 정보를 검색합니다.
             
-            Tavily API를 통해 실시간 웹 검색을 수행하며,
+            TavilySearchAPI 를 통해 실시간 웹 검색을 수행하며,
             다양한 필터링 옵션을 제공합니다.
 
             Args:
@@ -93,17 +75,11 @@ class TavilySearchServer(BaseMCPServer):
                 include_domains: 포함할 도메인 리스트 (예: ["wikipedia.org"])
                 exclude_domains: 제외할 도메인 리스트 (예: ["ads.com"])
 
-            Returns:
-                dict: 표준화된 검색 결과
-                    - success: 성공 여부
-                    - query: 원본 검색 쿼리
-                    - data: 검색 결과 및 통계
-                    - search_params: 사용된 검색 파라미터
             """
             try:
                 self.logger.info(f"웹 검색 시작: {query}")
 
-                # Tavily API를 통한 검색 실행
+                # TavilySearchAPI 를 통한 검색 실행
                 results = await self.tavily_api.search(
                     query=query,
                     search_depth=search_depth,
@@ -138,7 +114,7 @@ class TavilySearchServer(BaseMCPServer):
         async def search_news(
             query: str,
             time_range: Literal["day", "week", "month", "year"] = "week",
-            max_results: int = 5,
+            max_results: int = 10,
         ) -> dict[str, Any]:
             """
             최신 뉴스를 검색합니다.
@@ -178,7 +154,7 @@ class TavilySearchServer(BaseMCPServer):
                 return self.create_standard_response(
                     success=True,
                     query=query,
-                    data={"news_results": results, "total_results": len(results)},
+                    data={"results": results, "total_results": len(results)},
                     search_params={
                         "time_range": time_range,
                         "max_results": max_results,
@@ -189,6 +165,57 @@ class TavilySearchServer(BaseMCPServer):
                 # 에러 발생 시 표준화된 에러 응답 반환
                 return await self.handle_error("search_news", e, query=query)
 
+        @self.mcp.tool
+        async def search_finance(
+            query: str,
+            max_results: int = 10,
+            topic: Literal["finance"] = "finance",
+            search_depth: Literal["basic", "advanced"] = "advanced",
+            time_range: Literal["day", "week", "month", "year"] | None = "week",
+            start_date: str | None = None,
+            end_date: str | None = None,
+        ) -> dict[str, Any]:
+            """
+            최신 금융 정보를 검색합니다.
+            
+            TavilySearchAPI 를 통해 실시간 금융 검색을 수행하며,
+            다양한 필터링 옵션을 제공합니다.
+            
+            Args:
+                query: 검색할 키워드 또는 질문
+                max_results: 반환할 최대 결과 수 (기본값: 10)
+                topic: 검색 주제 필터 ("finance")
+                search_depth: 검색 깊이 ("basic": 빠른 검색, "advanced": 상세 검색)
+                time_range: 검색할 시간 범위 ("day", "week", "month", "year")
+                start_date: 시작 날짜 (YYYY-MM-DD 형식)
+                end_date: 종료 날짜 (YYYY-MM-DD 형식)
+            """
+            try:
+                self.logger.info(f"금융 검색 시작: {query}")
+                
+                # 금융 특화 검색 실행 (고급 검색 + 금융 토픽)
+                results = await self.tavily_api.search(
+                    query=query,
+                    search_depth=search_depth,
+                    max_results=max_results,
+                    topic=topic,
+                    time_range=time_range,
+                    start_date=start_date,
+                    end_date=end_date,
+                )
+
+                return self.create_standard_response(
+                    success=True,
+                    query=query,
+                    data={"results": results, "total_count": len(results)},
+                    search_params={
+                        "time_range": time_range,
+                    },
+                )
+
+            except Exception as e:
+                # 에러 발생 시 표준화된 에러 응답 반환
+                return await self.handle_error("search_finance", e, query=query)
 
 # 서버 인스턴스 생성 및 실행
 if __name__ == "__main__":

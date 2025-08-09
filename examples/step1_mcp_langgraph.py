@@ -77,7 +77,7 @@ async def main():
     test_queries = [
         # "2025년 AI 트렌드는 무엇인가요?",
         # "LangGraph와 MCP를 함께 사용하는 장점은 무엇인가요?",
-        "OpenAI 의 가장 최근 오픈소스 공개 모델에 대해 자세히 설명해주세요.",
+        "OpenAI 의 2025년 08월 가장 최근 오픈소스 공개 모델에 대해 자세히 설명해주세요.",
     ]
 
     for idx, query in enumerate(test_queries, 1):

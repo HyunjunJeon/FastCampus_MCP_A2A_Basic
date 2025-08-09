@@ -168,8 +168,6 @@ class BaseMCPServer(ABC):
         app = self.mcp.http_app(
             path=self.MCP_PATH,
             transport=self.transport,
-            # json_response=self.json_response,
-            # stateless_http=True,
         )
 
         uvicorn.run(app, host=self.host, port=self.port)

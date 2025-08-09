@@ -84,27 +84,19 @@ class BaseGraphAgent:
         _graph = StateGraph(
             state_schema=self.state_schema,
             config_schema=self.config_schema,
-            input=self.input_state,
-            output=self.output_state,
+            input_schema=self.input_state,
+            output_schema=self.output_state,
         )
 
         self.init_nodes(_graph)
         self.init_edges(_graph)
 
-        if self.agent_name:
-            self.graph = _graph.compile(
-                store=self.store,
-                checkpointer=self.checkpointer,
-                name=f"{self.agent_name}",
-                debug=self.is_debug,
-            )
-        else:
-            self.graph = _graph.compile(
-                store=self.store,
-                checkpointer=self.checkpointer,
-                name=f"{self.__class__.__name__}",
-                debug=self.is_debug,
-            )
+        self.graph = _graph.compile(
+            checkpointer=self.checkpointer,
+            store=self.store,
+            name=f"{self.agent_name or self.__class__.__name__}",
+            debug=self.is_debug,
+        )
 
     def init_nodes(self, graph: StateGraph):
         """

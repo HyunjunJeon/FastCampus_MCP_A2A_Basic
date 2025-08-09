@@ -4,7 +4,7 @@
 
 ## 목표
 
-- MCP(FastMCP) 서버를 기동하고 도구를 LangGraph 에이전트에서 호출
+- MCP(FastMCP) 서버를 만든 뒤, 기동하고 Tool List 를 LangGraph 에이전트에서 호출
 - 예제 실행으로 스트리밍 응답과 도구 사용 로그 확인
 
 ## 준비 사항(사전 점검)
@@ -12,35 +12,36 @@
 - Python 3.12+, uv 설치, Docker/Docker Compose 사용 가능
 - 루트 `.env` 구성: `OPENAI_API_KEY`, `TAVILY_API_KEY` (필수)
 
-   ```bash
-  # 프로젝트 루트에서
-  cat > .env <<'EOF'
-  OPENAI_API_KEY=your_openai_api_key
-  TAVILY_API_KEY=your_tavily_api_key
-  # (선택) 기타 키
-  EOF
-  ```
-
-- 의존성 설치
-
 ```bash
-  uv venv && uv sync
+cp .env.example .env
 ```
 
-## 1) MCP 서버 기동(택1)
+- 의존성 설치(이미 설치되어있을 수 있음)
+
+```bash
+uv venv && uv sync
+```
+
+## 1) MCP 서버 제작
+
+- Tavily MCP 서버 제작을 위해 [fastmcp docs](/docs/fastmcp-llms_2.11.0.txt) 를 참고하세요.
+  더 많은 fastmcp 내용이 필요하다면 [이 문서](/docs/fastmcp-llms-full_2.11.0.txt)도 괜찮습니다. (단 이 문서는 나눠서 읽도록 하세요)
+- Tavily Client 사용을 위해서는 [Tavily Docs](/docs/tavily_pyton_docs.md) 를 참고하세요.
+
+## 2) MCP 서버 기동
 
 - 권장 스크립트
 
 ```bash
-  ./docker/mcp_docker.sh up
-  ./docker/mcp_docker.sh test
+./docker/mcp_docker.sh up
+./docker/mcp_docker.sh test
 ```
 
 - 직접 Compose
 
 ```bash
-  docker compose -f docker/docker-compose.mcp.yml up -d tavily-mcp
-  curl -fsSL http://localhost:3001/health | cat
+docker compose -f docker/docker-compose.mcp.yml up -d tavily-mcp
+curl -fsSL http://localhost:3001/health | cat
 ```
 
 포트 맵: 3001(Tavily), 3000(arXiv), 3002(Serper). 모든 서비스 정의는 `docker/docker-compose.mcp.yml` 참고.
