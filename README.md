@@ -31,16 +31,17 @@ FastCampus 온라인강의 “MCP 와 A2A 로 개발하는 Multi Agent”(Part2 
 - Docker / Docker Compose (MCP 서버 및 Redis 실행용)
 
 권장 라이브러리/버전(정확한 버전은 `pyproject.toml` 참고):
+(2025.08.08 기준 최신 버전)
 
-- LangGraph 0.6.2
-- FastMCP 2.10.6
-- LangChain MCP Adapters 0.1.9
-- a2a-sdk 0.3.0
+- LangGraph v0.6.4
+- FastMCP v2.11.2
+- LangChain MCP Adapters v0.1.9
+- a2a-sdk v0.3.0
 
 참고 문서 모음: `docs/`
 
 - LangGraph-LLMs: [docs/langgraph-llms_0.6.2.txt](docs/langgraph-llms_0.6.2.txt), [docs/langgraph-llms-full_0.6.2.txt](docs/langgraph-llms-full_0.6.2.txt)
-- FastMCP: [docs/fastmcp-llms_2.10.6.txt](docs/fastmcp-llms_2.10.6.txt), [docs/fastmcp-llms-full_2.10.6.txt](docs/fastmcp-llms-full_2.10.6.txt)
+- FastMCP: [docs/fastmcp-llms_2.11.0.txt](docs/fastmcp-llms_2.11.0.txt), [docs/fastmcp-llms-full_2.11.0.txt](docs/fastmcp-llms-full_2.11.0.txt)
 - A2A: [docs/a2a-python_0.3.0.txt](docs/a2a-python_0.3.0.txt), [docs/a2a-samples_0.3.0.txt](docs/a2a-samples_0.3.0.txt)
 - 다이어그램 인덱스: [docs/diagrams/code_index.md](docs/diagrams/code_index.md)
 
@@ -57,19 +58,14 @@ uv sync
 
 1. 루트 `.env` 생성 및 설정(항상 루트 `.env` 사용)
 
+- [OPENAI_API_KEY 발급 사이트](https://platform.openai.com/api-keys)
+- [TAVILY_API_KEY 발급 사이트](https://www.tavily.com/)
+- [SERPER.dev API KEY 발급 사이트](https://serper.dev/)
+
 ```bash
 OPENAI_API_KEY=your_openai_api_key
 TAVILY_API_KEY=your_tavily_api_key
 SERPER_API_KEY=your_serper_api_key
-
-# (선택) HITL 알림용
-SLACK_WEBHOOK_URL=
-SMTP_HOST=
-SMTP_PORT=587
-SMTP_USERNAME=
-SMTP_PASSWORD=
-FROM_EMAIL=
-TO_EMAILS=
 ```
 
 1. MCP 서버(도커) 실행/중지/헬스체크
@@ -80,7 +76,7 @@ TO_EMAILS=
 ./docker/mcp_docker.sh up
 ./docker/mcp_docker.sh test
 
-# 중지
+# 중지 - 완전 삭제
 ./docker/mcp_docker.sh down
 ```
 
