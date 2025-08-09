@@ -27,7 +27,7 @@ FastCampus 온라인강의 “MCP 와 A2A 로 개발하는 Multi Agent”(Part2 
 ## 요구 사항
 
 - Python 3.12+
-- uv 패키지 매니저
+- [uv 패키지 매니저](https://docs.astral.sh/uv/getting-started/installation/)
 - Docker / Docker Compose (MCP 서버 및 Redis 실행용)
 
 권장 라이브러리/버전(정확한 버전은 `pyproject.toml` 참고):
