@@ -1,0 +1,2294 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HITL Approval System</title>
+    
+    <!-- React 및 CopilotKit CDN -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- CopilotKit CDN (시뮬레이션을 위한 기본 구현) -->
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .app-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+        
+        .header h1 {
+            color: #2d3748;
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            color: #4a5568;
+            font-size: 1.1rem;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            padding: 25px;
+            text-align: center;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+        }
+        
+        .stat-number {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #667eea;
+            margin-bottom: 8px;
+        }
+        
+        .stat-label {
+            color: #4a5568;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .approvals-container {
+            display: grid;
+            gap: 20px;
+        }
+        
+        .approval-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            padding: 25px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            border-left: 4px solid;
+            transition: all 0.3s ease;
+        }
+        
+        .approval-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+        }
+        
+        .approval-card.critical { border-left-color: #e53e3e; }
+        .approval-card.high { border-left-color: #dd6b20; }
+        .approval-card.medium { border-left-color: #3182ce; }
+        .approval-card.low { border-left-color: #38a169; }
+        
+        .approval-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .approval-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #2d3748;
+            flex: 1;
+        }
+        
+        .priority-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .priority-badge.critical { background: #fed7d7; color: #c53030; }
+        .priority-badge.high { background: #fed7a7; color: #c05621; }
+        .priority-badge.medium { background: #bee3f8; color: #2c5282; }
+        .priority-badge.low { background: #c6f6d5; color: #276749; }
+        
+        .approval-meta {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin: 15px 0;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.02);
+            border-radius: 8px;
+        }
+        
+        .meta-item {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .meta-label {
+            font-size: 0.8rem;
+            color: #718096;
+            margin-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .meta-value {
+            font-weight: 600;
+            color: #2d3748;
+        }
+        
+        .approval-description {
+            color: #4a5568;
+            line-height: 1.6;
+            margin: 15px 0;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
+        }
+        
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            flex: 1;
+        }
+        
+        .btn-approve {
+            background: #48bb78;
+            color: white;
+        }
+        
+        .btn-approve:hover {
+            background: #38a169;
+            transform: translateY(-1px);
+        }
+        
+        .btn-reject {
+            background: #f56565;
+            color: white;
+        }
+        
+        .btn-reject:hover {
+            background: #e53e3e;
+            transform: translateY(-1px);
+        }
+        
+        .btn-details {
+            background: #4299e1;
+            color: white;
+        }
+        
+        .btn-details:hover {
+            background: #3182ce;
+            transform: translateY(-1px);
+        }
+        
+        .copilot-chat {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 350px;
+            height: 500px;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        .copilot-header {
+            background: #667eea;
+            color: white;
+            padding: 15px;
+            font-weight: 600;
+        }
+        
+        .copilot-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        
+        .copilot-input {
+            border-top: 1px solid #e2e8f0;
+            padding: 15px;
+        }
+        
+        .copilot-input input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            outline: none;
+        }
+        
+        .chat-toggle {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 60px;
+            height: 60px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+        
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 40px;
+        }
+        
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #e2e8f0;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 60px;
+            color: #718096;
+        }
+        
+        .empty-state-icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+            opacity: 0.3;
+        }
+        
+        .tabs-container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        }
+        
+        .tabs-header {
+            display: flex;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        
+        .tab-button {
+            flex: 1;
+            padding: 20px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            color: #4a5568;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        
+        .tab-button:hover {
+            background: rgba(102, 126, 234, 0.1);
+        }
+        
+        .tab-button.active {
+            color: #667eea;
+        }
+        
+        .tab-button.active::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: #667eea;
+            border-radius: 2px 2px 0 0;
+        }
+        
+        .tab-badge {
+            display: inline-block;
+            background: #e2e8f0;
+            color: #4a5568;
+            font-size: 0.8rem;
+            padding: 2px 8px;
+            border-radius: 12px;
+            margin-left: 8px;
+            transition: all 0.3s ease;
+        }
+        
+        .tab-button.active .tab-badge {
+            background: #667eea;
+            color: white;
+        }
+        
+        .tab-content {
+            padding: 30px;
+        }
+        
+        .progress-container {
+            margin: 20px 0;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4ade80 0%, #22c55e 100%);
+            border-radius: 4px;
+            transition: width 1s ease-out;
+            animation: progressGlow 2s ease-in-out infinite alternate;
+        }
+        
+        .progress-fill.failed {
+            background: linear-gradient(90deg, #f87171 0%, #ef4444 100%);
+        }
+        
+        .progress-text {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.9rem;
+            margin-bottom: 15px;
+        }
+        
+        .progress-percentage {
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+        
+        .stages-container {
+            display: flex;
+            justify-content: space-between;
+            margin: 20px 0;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+        }
+        
+        .stage-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            flex: 1;
+            position: relative;
+        }
+        
+        .stage-item:not(:last-child)::after {
+            content: '';
+            position: absolute;
+            top: 12px;
+            right: -50%;
+            width: 100%;
+            height: 2px;
+            background: rgba(255, 255, 255, 0.3);
+        }
+        
+        .stage-item.completed:not(:last-child)::after {
+            background: #22c55e;
+        }
+        
+        .stage-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            margin-bottom: 8px;
+            transition: all 0.3s ease;
+        }
+        
+        .stage-item.completed .stage-icon {
+            background: #22c55e;
+        }
+        
+        .stage-item.current .stage-icon {
+            background: #3b82f6;
+            animation: stagePulse 1.5s ease-in-out infinite;
+        }
+        
+        .stage-label {
+            font-size: 0.8rem;
+            text-align: center;
+            opacity: 0.8;
+        }
+        
+        .stage-item.current .stage-label {
+            opacity: 1;
+            font-weight: 600;
+        }
+        
+        .current-action {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 15px;
+            margin-top: 15px;
+            border-left: 4px solid #3b82f6;
+        }
+        
+        .current-action-label {
+            font-size: 0.8rem;
+            opacity: 0.8;
+            margin-bottom: 5px;
+        }
+        
+        .current-action-text {
+            font-weight: 600;
+            font-family: monospace;
+        }
+        
+        @keyframes progressGlow {
+            0% { box-shadow: 0 0 5px rgba(34, 197, 94, 0.5); }
+            100% { box-shadow: 0 0 20px rgba(34, 197, 94, 0.8); }
+        }
+        
+        @keyframes stagePulse {
+            0%, 100% {
+                transform: scale(1);
+                box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
+            }
+            50% {
+                transform: scale(1.1);
+                box-shadow: 0 0 0 8px rgba(59, 130, 246, 0);
+            }
+        }
+        
+        .filters-container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        }
+        
+        .filters-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .filters-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #2d3748;
+        }
+        
+        .filters-toggle {
+            background: none;
+            border: none;
+            color: #667eea;
+            cursor: pointer;
+            font-size: 0.9rem;
+            padding: 5px 10px;
+            border-radius: 8px;
+            transition: background 0.2s;
+        }
+        
+        .filters-toggle:hover {
+            background: rgba(102, 126, 234, 0.1);
+        }
+        
+        .filters-content {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            align-items: end;
+        }
+        
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .filter-label {
+            font-size: 0.8rem;
+            color: #4a5568;
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+        
+        .filter-input, .filter-select {
+            padding: 10px 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            background: white;
+        }
+        
+        .filter-input:focus, .filter-select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .filter-actions {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .filter-btn {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .filter-btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        
+        .filter-btn-primary:hover {
+            background: #5a67d8;
+        }
+        
+        .filter-btn-secondary {
+            background: #e2e8f0;
+            color: #4a5568;
+        }
+        
+        .filter-btn-secondary:hover {
+            background: #cbd5e0;
+        }
+        
+        .pagination-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 20px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        }
+        
+        .pagination-info {
+            color: #4a5568;
+            font-size: 0.9rem;
+        }
+        
+        .pagination-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .pagination-btn {
+            padding: 8px 12px;
+            border: 1px solid #e2e8f0;
+            background: white;
+            color: #4a5568;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+        
+        .pagination-btn:hover:not(:disabled) {
+            background: #f7fafc;
+            border-color: #cbd5e0;
+        }
+        
+        .pagination-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .pagination-btn.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+        
+        .page-size-select {
+            padding: 6px 10px;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            background: white;
+        }
+        
+        .active-filters {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 15px;
+        }
+        
+        .active-filter-tag {
+            background: #667eea;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 16px;
+            font-size: 0.8rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .active-filter-remove {
+            background: none;
+            border: none;
+            color: white;
+            cursor: pointer;
+            padding: 0;
+            font-size: 1rem;
+            line-height: 1;
+        }
+        
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+            50% {
+                opacity: 0.95;
+                transform: scale(1.01);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useEffect, useCallback } = React;
+        
+        // A2A 프로토콜 시뮬레이션을 위한 기본 훅
+        const useA2AConnection = () => {
+            const [connected, setConnected] = useState(false);
+            const [messages, setMessages] = useState([]);
+            
+            useEffect(() => {
+                // A2A 연결 시뮬레이션
+                setTimeout(() => setConnected(true), 1000);
+            }, []);
+            
+            const sendMessage = useCallback((message) => {
+                setMessages(prev => [...prev, { type: 'outgoing', content: message }]);
+                // A2A 에이전트로 메시지 전송 시뮬레이션
+                setTimeout(() => {
+                    setMessages(prev => [...prev, { 
+                        type: 'incoming', 
+                        content: `A2A 응답: ${message}에 대한 처리를 시작합니다.` 
+                    }]);
+                }, 1000);
+            }, []);
+            
+            return { connected, messages, sendMessage };
+        };
+        
+        // 필터링 및 정렬 유틸리티 함수들
+        const applyFiltersAndSorting = (data, filters) => {
+            let filtered = [...data];
+            
+            // 검색 필터
+            if (filters.search && filters.search.trim()) {
+                const searchTerm = filters.search.toLowerCase();
+                filtered = filtered.filter(item => 
+                    item.title?.toLowerCase().includes(searchTerm) ||
+                    item.description?.toLowerCase().includes(searchTerm) ||
+                    item.request_id?.toLowerCase().includes(searchTerm) ||
+                    item.agent_id?.toLowerCase().includes(searchTerm)
+                );
+            }
+            
+            // 에이전트 필터
+            if (filters.agentId && filters.agentId.trim()) {
+                filtered = filtered.filter(item => item.agent_id === filters.agentId);
+            }
+            
+            // 승인 유형 필터
+            if (filters.approvalType && filters.approvalType.trim()) {
+                filtered = filtered.filter(item => item.approval_type === filters.approvalType);
+            }
+            
+            // 우선순위 필터
+            if (filters.priority && filters.priority.trim()) {
+                filtered = filtered.filter(item => item.priority === filters.priority);
+            }
+            
+            // 날짜 필터 (승인/거부된 항목용)
+            if (filters.dateFrom && filters.dateFrom.trim()) {
+                const fromDate = new Date(filters.dateFrom);
+                filtered = filtered.filter(item => {
+                    const itemDate = new Date(item.decided_at || item.created_at);
+                    return itemDate >= fromDate;
+                });
+            }
+            
+            if (filters.dateTo && filters.dateTo.trim()) {
+                const toDate = new Date(filters.dateTo);
+                toDate.setHours(23, 59, 59, 999); // 하루 끝까지
+                filtered = filtered.filter(item => {
+                    const itemDate = new Date(item.decided_at || item.created_at);
+                    return itemDate <= toDate;
+                });
+            }
+            
+            // 정렬 (최신순)
+            filtered.sort((a, b) => {
+                const aDate = new Date(a.decided_at || a.created_at);
+                const bDate = new Date(b.decided_at || b.created_at);
+                return bDate - aDate;
+            });
+            
+            return filtered;
+        };
+        
+        const paginateData = (data, page, pageSize) => {
+            const startIndex = (page - 1) * pageSize;
+            const endIndex = startIndex + pageSize;
+            const paginatedData = data.slice(startIndex, endIndex);
+            
+            return {
+                data: paginatedData,
+                totalItems: data.length,
+                totalPages: Math.ceil(data.length / pageSize),
+                currentPage: page,
+                pageSize: pageSize
+            };
+        };
+        
+        // 웹소켓 연결 및 탭별 데이터 관리 훅
+        const useWebSocket = () => {
+            const [socket, setSocket] = useState(null);
+            const [allPendingApprovals, setAllPendingApprovals] = useState([]);
+            const [allApprovedApprovals, setAllApprovedApprovals] = useState([]);
+            const [allRejectedApprovals, setAllRejectedApprovals] = useState([]);
+            const [connected, setConnected] = useState(false);
+            const [researchStatus, setResearchStatus] = useState(null);
+            const [loading, setLoading] = useState({
+                pending: true,
+                approved: false,
+                rejected: false
+            });
+            
+            // 필터링 및 페이지네이션 상태
+            const [filters, setFilters] = useState({
+                search: '',
+                agentId: '',
+                approvalType: '',
+                priority: '',
+                dateFrom: '',
+                dateTo: ''
+            });
+            
+            const [pagination, setPagination] = useState({
+                pending: { page: 1, pageSize: 10 },
+                approved: { page: 1, pageSize: 10 },
+                rejected: { page: 1, pageSize: 10 },
+                history: { page: 1, pageSize: 10 }
+            });
+            
+            // 각 탭별 데이터 fetch 함수들
+            const fetchPendingApprovals = async () => {
+                try {
+                    setLoading(prev => ({ ...prev, pending: true }));
+                    const response = await fetch('/api/approvals/pending?limit=1000'); // 더 많은 데이터 가져오기
+                    const data = await response.json();
+                    setAllPendingApprovals(data);
+                } catch (error) {
+                    console.error('대기중 승인 조회 오류:', error);
+                } finally {
+                    setLoading(prev => ({ ...prev, pending: false }));
+                }
+            };
+            
+            const fetchApprovedApprovals = async () => {
+                try {
+                    setLoading(prev => ({ ...prev, approved: true }));
+                    const response = await fetch('/api/approvals/approved?limit=1000');
+                    const data = await response.json();
+                    setAllApprovedApprovals(data);
+                } catch (error) {
+                    console.error('승인된 요청 조회 오류:', error);
+                } finally {
+                    setLoading(prev => ({ ...prev, approved: false }));
+                }
+            };
+            
+            const fetchRejectedApprovals = async () => {
+                try {
+                    setLoading(prev => ({ ...prev, rejected: true }));
+                    const response = await fetch('/api/approvals/rejected?limit=1000');
+                    const data = await response.json();
+                    setAllRejectedApprovals(data);
+                } catch (error) {
+                    console.error('거부된 요청 조회 오류:', error);
+                } finally {
+                    setLoading(prev => ({ ...prev, rejected: false }));
+                }
+            };
+            
+            // 승인/거부 처리 후 데이터 갱신
+            const refreshData = () => {
+                fetchPendingApprovals();
+                fetchApprovedApprovals(); 
+                fetchRejectedApprovals();
+            };
+            
+            // 필터링된 데이터 계산
+            const getFilteredData = (tabId) => {
+                let rawData;
+                switch (tabId) {
+                    case 'pending':
+                        rawData = allPendingApprovals;
+                        break;
+                    case 'approved':
+                        rawData = allApprovedApprovals;
+                        break;
+                    case 'rejected':
+                        rawData = allRejectedApprovals;
+                        break;
+                    case 'history':
+                        rawData = [...allPendingApprovals, ...allApprovedApprovals, ...allRejectedApprovals];
+                        break;
+                    default:
+                        rawData = [];
+                }
+                
+                return applyFiltersAndSorting(rawData, filters);
+            };
+            
+            // 페이지네이션된 데이터 계산
+            const getPaginatedData = (tabId) => {
+                const filteredData = getFilteredData(tabId);
+                const tabPagination = pagination[tabId] || { page: 1, pageSize: 10 };
+                return paginateData(filteredData, tabPagination.page, tabPagination.pageSize);
+            };
+            
+            // 사용 가능한 에이전트 및 유형 목록 계산
+            const getAvailableOptions = () => {
+                const allData = [...allPendingApprovals, ...allApprovedApprovals, ...allRejectedApprovals];
+                
+                const agents = [...new Set(allData.map(item => item.agent_id).filter(Boolean))].sort();
+                const types = [...new Set(allData.map(item => item.approval_type).filter(Boolean))].sort();
+                
+                return { agents, types };
+            };
+            
+            useEffect(() => {
+                const ws = new WebSocket(`ws://${window.location.host}/ws`);
+                
+                ws.onopen = () => {
+                    setConnected(true);
+                    console.log('WebSocket 연결됨');
+                    fetchPendingApprovals(); // 초기 데이터 로드
+                };
+                
+                ws.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'initial_data') {
+                        setAllPendingApprovals(data.data);
+                        setLoading(prev => ({ ...prev, pending: false }));
+                    } else if (data.type === 'approval_update') {
+                        // 실시간 업데이트 시 모든 탭 데이터 갱신
+                        refreshData();
+                    } else if (data.type === 'research_started') {
+                        // Deep Research 시작 상태 업데이트
+                        setResearchStatus(prev => ({
+                            ...prev,
+                            type: 'research_started',
+                            title: 'Deep Research 시작됨',
+                            message: `새로운 연구가 시작되었습니다: ${data.data.topic}`,
+                            details: data.data,
+                            progress: {
+                                current: 0,
+                                total: data.data.stages ? data.data.stages.length : 3,
+                                stage: 0,
+                                stageName: '시작됨'
+                            }
+                        }));
+                        // 5분 후 자동으로 상태 제거 (진행상황이나 완료 이벤트가 없을 경우)
+                        setTimeout(() => setResearchStatus(null), 300000);
+                    } else if (data.type === 'research_progress') {
+                        // Deep Research 진행상황 업데이트
+                        setResearchStatus(prev => ({
+                            ...prev,
+                            type: 'research_progress',
+                            title: 'Deep Research 진행 중',
+                            message: `연구가 진행되고 있습니다: ${data.data.current_action || '데이터 처리 중...'}`,
+                            details: {
+                                ...prev?.details,
+                                ...data.data
+                            },
+                            progress: {
+                                current: data.data.progress || 0,
+                                total: 100,
+                                stage: data.data.stage || 1,
+                                stageName: data.data.stage_name || '진행 중',
+                                estimatedTime: data.data.estimated_time
+                            }
+                        }));
+                    } else if (data.type === 'research_completed') {
+                        // Deep Research 완료 업데이트
+                        setResearchStatus(prev => ({
+                            ...prev,
+                            type: 'research_completed',
+                            title: data.data.success ? 'Deep Research 완료' : 'Deep Research 실패',
+                            message: data.data.summary || (data.data.success ? '연구가 성공적으로 완료되었습니다.' : '연구 중 오류가 발생했습니다.'),
+                            details: {
+                                ...prev?.details,
+                                ...data.data
+                            },
+                            progress: {
+                                current: 100,
+                                total: 100,
+                                stage: prev?.progress?.total || 3,
+                                stageName: '완료',
+                                completed: true,
+                                success: data.data.success
+                            }
+                        }));
+                        // 2분 후 상태 제거
+                        setTimeout(() => setResearchStatus(null), 120000);
+                    }
+                };
+                
+                ws.onclose = () => {
+                    setConnected(false);
+                    console.log('WebSocket 연결 해제됨');
+                };
+                
+                setSocket(ws);
+                
+                return () => {
+                    ws.close();
+                };
+            }, []);
+            
+            return { 
+                socket, 
+                connected, 
+                researchStatus,
+                loading,
+                filters,
+                setFilters,
+                pagination,
+                setPagination,
+                getFilteredData,
+                getPaginatedData,
+                getAvailableOptions,
+                fetchPendingApprovals,
+                fetchApprovedApprovals,
+                fetchRejectedApprovals,
+                refreshData,
+                // 편의를 위한 카운트 함수들
+                getTotalCounts: () => ({
+                    pending: allPendingApprovals.length,
+                    approved: allApprovedApprovals.length,
+                    rejected: allRejectedApprovals.length
+                })
+            };
+        };
+        
+        // 승인 요청 컴포넌트
+        const ApprovalCard = ({ approval, onApprove, onReject, showActions = true }) => {
+            const formatDate = (dateString) => {
+                return new Date(dateString).toLocaleString('ko-KR');
+            };
+            
+            const handleApprove = () => {
+                const reviewer = prompt('검토자 이름을 입력하세요:');
+                if (reviewer) {
+                    onApprove(approval.request_id, reviewer);
+                }
+            };
+            
+            const handleReject = () => {
+                const reviewer = prompt('검토자 이름을 입력하세요:');
+                const reason = prompt('거부 사유를 입력하세요:');
+                if (reviewer && reason) {
+                    onReject(approval.request_id, reviewer, reason);
+                }
+            };
+            
+            const getStatusBadge = () => {
+                if (approval.status === 'approved') {
+                    return <span style={{background: '#c6f6d5', color: '#276749', padding: '4px 12px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '600'}}>✅ 승인됨</span>;
+                } else if (approval.status === 'rejected') {
+                    return <span style={{background: '#fed7d7', color: '#c53030', padding: '4px 12px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '600'}}>❌ 거부됨</span>;
+                }
+                return <span className={`priority-badge ${approval.priority}`}>{approval.priority}</span>;
+            };
+            
+            return (
+                <div className={`approval-card ${approval.priority}`}>
+                    <div className="approval-header">
+                        <div className="approval-title">{approval.title}</div>
+                        {getStatusBadge()}
+                    </div>
+                    
+                    <div className="approval-meta">
+                        <div className="meta-item">
+                            <span className="meta-label">에이전트</span>
+                            <span className="meta-value">{approval.agent_id}</span>
+                        </div>
+                        <div className="meta-item">
+                            <span className="meta-label">유형</span>
+                            <span className="meta-value">{approval.approval_type}</span>
+                        </div>
+                        <div className="meta-item">
+                            <span className="meta-label">생성시간</span>
+                            <span className="meta-value">{formatDate(approval.created_at)}</span>
+                        </div>
+                        {approval.decided_at && (
+                            <div className="meta-item">
+                                <span className="meta-label">처리시간</span>
+                                <span className="meta-value">{formatDate(approval.decided_at)}</span>
+                            </div>
+                        )}
+                        {!approval.decided_at && approval.expires_at && (
+                            <div className="meta-item">
+                                <span className="meta-label">만료시간</span>
+                                <span className="meta-value">{formatDate(approval.expires_at)}</span>
+                            </div>
+                        )}
+                        {approval.decided_by && (
+                            <div className="meta-item">
+                                <span className="meta-label">처리자</span>
+                                <span className="meta-value">{approval.decided_by}</span>
+                            </div>
+                        )}
+                    </div>
+                    
+                    <div className="approval-description">
+                        {approval.description}
+                    </div>
+                    
+                    {approval.reason && (
+                        <div style={{
+                            background: 'rgba(245, 101, 101, 0.1)',
+                            border: '1px solid #fed7d7',
+                            borderRadius: '8px',
+                            padding: '12px',
+                            marginTop: '15px'
+                        }}>
+                            <div style={{fontSize: '0.8rem', color: '#c53030', fontWeight: '600', marginBottom: '4px'}}>거부 사유</div>
+                            <div style={{color: '#2d3748'}}>{approval.reason}</div>
+                        </div>
+                    )}
+                    
+                    {showActions && approval.status === 'pending' && (
+                        <div className="action-buttons">
+                            <button className="btn btn-approve" onClick={handleApprove}>
+                                ✅ 승인
+                            </button>
+                            <button className="btn btn-reject" onClick={handleReject}>
+                                ❌ 거부
+                            </button>
+                            <button className="btn btn-details" onClick={async () => {
+                                try {
+                                    const resp = await fetch(`/api/approvals/${approval.request_id}/final-report`);
+                                    if (resp.ok) {
+                                        const data = await resp.json();
+                                        const win = window.open('', '_blank', 'width=900,height=700');
+                                        if (win) {
+                                            win.document.write(`<!DOCTYPE html><html><head><meta charset='utf-8'><title>최종 보고서 - ${approval.request_id}</title></head><body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; line-height: 1.6; white-space: pre-wrap;">`);
+                                            win.document.write(`<h2>📋 최종 보고서</h2>`);
+                                            win.document.write(`<p><strong>요청 ID:</strong> ${approval.request_id}</p>`);
+                                            win.document.write(`<p><strong>제목:</strong> ${approval.title}</p>`);
+                                            win.document.write(`<hr/>`);
+                                            win.document.write(`<div>${data.final_report.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`);
+                                            win.document.write(`</body></html>`);
+                                            win.document.close();
+                                        }
+                                    } else {
+                                        alert('최종 보고서를 불러오지 못했습니다.');
+                                    }
+                                } catch (e) {
+                                    alert('보고서 조회 중 오류가 발생했습니다.');
+                                }
+                            }}>
+                                📋 상세보기
+                            </button>
+                        </div>
+                    )}
+                    
+                    {!showActions || approval.status !== 'pending' && (
+                        <div className="action-buttons">
+                            <button className="btn btn-details" style={{flex: 'none', width: 'auto'}} onClick={async () => {
+                                try {
+                                    const resp = await fetch(`/api/approvals/${approval.request_id}/final-report`);
+                                    if (resp.ok) {
+                                        const data = await resp.json();
+                                        const win = window.open('', '_blank', 'width=900,height=700');
+                                        if (win) {
+                                            win.document.write(`<!DOCTYPE html><html><head><meta charset='utf-8'><title>최종 보고서 - ${approval.request_id}</title></head><body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; line-height: 1.6; white-space: pre-wrap;">`);
+                                            win.document.write(`<h2>📋 최종 보고서</h2>`);
+                                            win.document.write(`<p><strong>요청 ID:</strong> ${approval.request_id}</p>`);
+                                            win.document.write(`<p><strong>제목:</strong> ${approval.title}</p>`);
+                                            win.document.write(`<hr/>`);
+                                            win.document.write(`<div>${data.final_report.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`);
+                                            win.document.write(`</body></html>`);
+                                            win.document.close();
+                                        }
+                                    } else {
+                                        alert('최종 보고서를 불러오지 못했습니다.');
+                                    }
+                                } catch (e) {
+                                    alert('보고서 조회 중 오류가 발생했습니다.');
+                                }
+                            }}>
+                                📋 상세보기
+                            </button>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+        
+        // 향상된 연구 진행 상태 표시 컴포넌트
+        const ResearchStatusCard = ({ status }) => {
+            if (!status) return null;
+            
+            const getBackgroundGradient = () => {
+                switch (status.type) {
+                    case 'research_started':
+                        return 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                    case 'research_progress':
+                        return 'linear-gradient(135deg, #3b82f6 0%, #1e40af 100%)';
+                    case 'research_completed':
+                        return status.progress?.success 
+                            ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+                            : 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)';
+                    default:
+                        return 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                }
+            };
+            
+            const getStatusIcon = () => {
+                switch (status.type) {
+                    case 'research_started': return '🚀';
+                    case 'research_progress': return '⚡';
+                    case 'research_completed': 
+                        return status.progress?.success ? '✅' : '❌';
+                    default: return '🔬';
+                }
+            };
+            
+            const renderStages = () => {
+                if (!status.details?.stages || !Array.isArray(status.details.stages)) return null;
+                
+                const stages = status.details.stages;
+                const currentStage = status.progress?.stage || 0;
+                
+                return (
+                    <div className="stages-container">
+                        {stages.map((stageName, index) => {
+                            const isCompleted = index < currentStage;
+                            const isCurrent = index === currentStage;
+                            
+                            return (
+                                <div 
+                                    key={index} 
+                                    className={`stage-item ${isCompleted ? 'completed' : ''} ${isCurrent ? 'current' : ''}`}
+                                >
+                                    <div className="stage-icon">
+                                        {isCompleted ? '✓' : isCurrent ? '●' : '○'}
+                                    </div>
+                                    <div className="stage-label">{stageName}</div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                );
+            };
+            
+            const renderProgressBar = () => {
+                const progress = status.progress;
+                if (!progress) return null;
+                
+                const percentage = Math.min(100, Math.max(0, progress.current || 0));
+                const isCompleted = progress.completed;
+                const isFailed = isCompleted && !progress.success;
+                
+                return (
+                    <div className="progress-container">
+                        <div className="progress-text">
+                            <span>진행률</span>
+                            <div>
+                                <span className="progress-percentage">
+                                    {percentage}%
+                                </span>
+                                {progress.estimatedTime && (
+                                    <span style={{ marginLeft: '10px', opacity: '0.8' }}>
+                                        ({progress.estimatedTime})
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                        <div className="progress-bar">
+                            <div 
+                                className={`progress-fill ${isFailed ? 'failed' : ''}`}
+                                style={{ width: `${percentage}%` }}
+                            ></div>
+                        </div>
+                    </div>
+                );
+            };
+            
+            const renderCurrentAction = () => {
+                const currentAction = status.details?.current_action || status.message;
+                if (!currentAction || status.progress?.completed) return null;
+                
+                return (
+                    <div className="current-action">
+                        <div className="current-action-label">현재 작업</div>
+                        <div className="current-action-text">{currentAction}</div>
+                    </div>
+                );
+            };
+            
+            const renderCompletionSummary = () => {
+                if (!status.progress?.completed) return null;
+                
+                return (
+                    <div style={{
+                        background: 'rgba(255, 255, 255, 0.1)',
+                        borderRadius: '12px',
+                        padding: '15px',
+                        marginTop: '15px'
+                    }}>
+                        <div style={{ fontSize: '0.9rem', marginBottom: '8px', opacity: '0.9' }}>
+                            <strong>연구 결과</strong>
+                        </div>
+                        <div style={{ lineHeight: '1.5' }}>
+                            {status.message || '연구가 완료되었습니다.'}
+                        </div>
+                        {status.details?.total_duration && (
+                            <div style={{ 
+                                marginTop: '10px', 
+                                fontSize: '0.9rem', 
+                                opacity: '0.8' 
+                            }}>
+                                소요시간: {status.details.total_duration}
+                            </div>
+                        )}
+                    </div>
+                );
+            };
+            
+            return (
+                <div style={{
+                    background: getBackgroundGradient(),
+                    borderRadius: '20px',
+                    padding: '30px',
+                    marginBottom: '30px',
+                    color: 'white',
+                    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
+                    animation: status.progress?.completed ? 'none' : 'pulse 2s ease-in-out infinite'
+                }}>
+                    <h2 style={{fontSize: '1.8rem', marginBottom: '15px'}}>
+                        {status.title} {getStatusIcon()}
+                    </h2>
+                    <p style={{fontSize: '1.1rem', marginBottom: '20px', opacity: '0.95'}}>
+                        {status.details?.topic && (
+                            <span style={{ fontWeight: '600' }}>
+                                "{status.details.topic}"
+                            </span>
+                        )}
+                    </p>
+                    
+                    {renderProgressBar()}
+                    {renderStages()}
+                    {renderCurrentAction()}
+                    {renderCompletionSummary()}
+                </div>
+            );
+        };
+        
+        // 필터 컴포넌트
+        const FiltersContainer = ({ 
+            filters, 
+            onFiltersChange, 
+            availableAgents = [], 
+            availableTypes = [],
+            activeTab
+        }) => {
+            const [showFilters, setShowFilters] = useState(false);
+            
+            const handleFilterChange = (key, value) => {
+                onFiltersChange({
+                    ...filters,
+                    [key]: value
+                });
+            };
+            
+            const handleClearFilters = () => {
+                onFiltersChange({
+                    search: '',
+                    agentId: '',
+                    approvalType: '',
+                    priority: '',
+                    dateFrom: '',
+                    dateTo: ''
+                });
+            };
+            
+            const getActiveFiltersCount = () => {
+                return Object.values(filters).filter(value => value && value.trim()).length;
+            };
+            
+            const renderActiveFilters = () => {
+                const activeFilters = [];
+                
+                if (filters.search) activeFilters.push({ key: 'search', label: `검색: "${filters.search}"`, value: filters.search });
+                if (filters.agentId) activeFilters.push({ key: 'agentId', label: `에이전트: ${filters.agentId}`, value: filters.agentId });
+                if (filters.approvalType) activeFilters.push({ key: 'approvalType', label: `유형: ${filters.approvalType}`, value: filters.approvalType });
+                if (filters.priority) activeFilters.push({ key: 'priority', label: `우선순위: ${filters.priority}`, value: filters.priority });
+                if (filters.dateFrom) activeFilters.push({ key: 'dateFrom', label: `시작일: ${filters.dateFrom}`, value: filters.dateFrom });
+                if (filters.dateTo) activeFilters.push({ key: 'dateTo', label: `종료일: ${filters.dateTo}`, value: filters.dateTo });
+                
+                if (activeFilters.length === 0) return null;
+                
+                return (
+                    <div className="active-filters">
+                        {activeFilters.map((filter, index) => (
+                            <div key={index} className="active-filter-tag">
+                                {filter.label}
+                                <button
+                                    className="active-filter-remove"
+                                    onClick={() => handleFilterChange(filter.key, '')}
+                                >
+                                    ×
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                );
+            };
+            
+            return (
+                <div className="filters-container">
+                    <div className="filters-header">
+                        <div className="filters-title">
+                            🔍 필터 및 검색 
+                            {getActiveFiltersCount() > 0 && (
+                                <span style={{
+                                    background: '#667eea',
+                                    color: 'white',
+                                    borderRadius: '50%',
+                                    padding: '2px 8px',
+                                    fontSize: '0.8rem',
+                                    marginLeft: '8px'
+                                }}>
+                                    {getActiveFiltersCount()}
+                                </span>
+                            )}
+                        </div>
+                        <button 
+                            className="filters-toggle"
+                            onClick={() => setShowFilters(!showFilters)}
+                        >
+                            {showFilters ? '▲ 숨기기' : '▼ 표시'}
+                        </button>
+                    </div>
+                    
+                    {showFilters && (
+                        <div className="filters-content">
+                            <div className="filter-group">
+                                <label className="filter-label">검색</label>
+                                <input
+                                    type="text"
+                                    className="filter-input"
+                                    placeholder="제목, 설명, ID 검색..."
+                                    value={filters.search || ''}
+                                    onChange={(e) => handleFilterChange('search', e.target.value)}
+                                />
+                            </div>
+                            
+                            <div className="filter-group">
+                                <label className="filter-label">에이전트</label>
+                                <select
+                                    className="filter-select"
+                                    value={filters.agentId || ''}
+                                    onChange={(e) => handleFilterChange('agentId', e.target.value)}
+                                >
+                                    <option value="">전체</option>
+                                    {availableAgents.map(agent => (
+                                        <option key={agent} value={agent}>{agent}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            
+                            <div className="filter-group">
+                                <label className="filter-label">승인 유형</label>
+                                <select
+                                    className="filter-select"
+                                    value={filters.approvalType || ''}
+                                    onChange={(e) => handleFilterChange('approvalType', e.target.value)}
+                                >
+                                    <option value="">전체</option>
+                                    {availableTypes.map(type => (
+                                        <option key={type} value={type}>{type}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            
+                            <div className="filter-group">
+                                <label className="filter-label">우선순위</label>
+                                <select
+                                    className="filter-select"
+                                    value={filters.priority || ''}
+                                    onChange={(e) => handleFilterChange('priority', e.target.value)}
+                                >
+                                    <option value="">전체</option>
+                                    <option value="critical">긴급</option>
+                                    <option value="high">높음</option>
+                                    <option value="medium">보통</option>
+                                    <option value="low">낮음</option>
+                                </select>
+                            </div>
+                            
+                            {(activeTab === 'approved' || activeTab === 'rejected' || activeTab === 'history') && (
+                                <>
+                                    <div className="filter-group">
+                                        <label className="filter-label">시작일</label>
+                                        <input
+                                            type="date"
+                                            className="filter-input"
+                                            value={filters.dateFrom || ''}
+                                            onChange={(e) => handleFilterChange('dateFrom', e.target.value)}
+                                        />
+                                    </div>
+                                    
+                                    <div className="filter-group">
+                                        <label className="filter-label">종료일</label>
+                                        <input
+                                            type="date"
+                                            className="filter-input"
+                                            value={filters.dateTo || ''}
+                                            onChange={(e) => handleFilterChange('dateTo', e.target.value)}
+                                        />
+                                    </div>
+                                </>
+                            )}
+                            
+                            <div className="filter-group">
+                                <label className="filter-label">&nbsp;</label>
+                                <div className="filter-actions">
+                                    <button
+                                        className="filter-btn filter-btn-secondary"
+                                        onClick={handleClearFilters}
+                                    >
+                                        🗑️ 초기화
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {renderActiveFilters()}
+                </div>
+            );
+        };
+        
+        // 페이지네이션 컴포넌트
+        const Pagination = ({ 
+            currentPage, 
+            totalPages, 
+            totalItems, 
+            pageSize, 
+            onPageChange, 
+            onPageSizeChange 
+        }) => {
+            if (totalPages <= 1) return null;
+            
+            const getVisiblePages = () => {
+                const delta = 2;
+                const range = [];
+                const rangeWithDots = [];
+                
+                for (let i = Math.max(2, currentPage - delta); 
+                     i <= Math.min(totalPages - 1, currentPage + delta); 
+                     i++) {
+                    range.push(i);
+                }
+                
+                if (currentPage - delta > 2) {
+                    rangeWithDots.push(1, '...');
+                } else {
+                    rangeWithDots.push(1);
+                }
+                
+                rangeWithDots.push(...range);
+                
+                if (currentPage + delta < totalPages - 1) {
+                    rangeWithDots.push('...', totalPages);
+                } else {
+                    if (totalPages > 1) rangeWithDots.push(totalPages);
+                }
+                
+                return rangeWithDots;
+            };
+            
+            const startItem = (currentPage - 1) * pageSize + 1;
+            const endItem = Math.min(currentPage * pageSize, totalItems);
+            
+            return (
+                <div className="pagination-container">
+                    <div className="pagination-info">
+                        {totalItems > 0 ? (
+                            `${startItem}-${endItem} / 총 ${totalItems}개`
+                        ) : (
+                            '항목이 없습니다'
+                        )}
+                    </div>
+                    
+                    <div className="pagination-controls">
+                        <select
+                            className="page-size-select"
+                            value={pageSize}
+                            onChange={(e) => onPageSizeChange(parseInt(e.target.value))}
+                        >
+                            <option value={10}>10개씩</option>
+                            <option value={25}>25개씩</option>
+                            <option value={50}>50개씩</option>
+                            <option value={100}>100개씩</option>
+                        </select>
+                        
+                        <button
+                            className="pagination-btn"
+                            disabled={currentPage <= 1}
+                            onClick={() => onPageChange(currentPage - 1)}
+                        >
+                            ‹ 이전
+                        </button>
+                        
+                        {getVisiblePages().map((page, index) => (
+                            page === '...' ? (
+                                <span key={index} className="pagination-btn" style={{cursor: 'default'}}>
+                                    ...
+                                </span>
+                            ) : (
+                                <button
+                                    key={page}
+                                    className={`pagination-btn ${currentPage === page ? 'active' : ''}`}
+                                    onClick={() => onPageChange(page)}
+                                >
+                                    {page}
+                                </button>
+                            )
+                        ))}
+                        
+                        <button
+                            className="pagination-btn"
+                            disabled={currentPage >= totalPages}
+                            onClick={() => onPageChange(currentPage + 1)}
+                        >
+                            다음 ›
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+        
+        // 탭 컴포넌트
+        const TabsContainer = ({ 
+            activeTab, 
+            onTabChange, 
+            pendingCount, 
+            approvedCount, 
+            rejectedCount, 
+            children 
+        }) => {
+            const tabs = [
+                { id: 'pending', label: '대기중', icon: '⏳', count: pendingCount },
+                { id: 'approved', label: '승인됨', icon: '✅', count: approvedCount },
+                { id: 'rejected', label: '거부됨', icon: '❌', count: rejectedCount },
+                { id: 'history', label: '전체이력', icon: '📋', count: pendingCount + approvedCount + rejectedCount }
+            ];
+            
+            return (
+                <div className="tabs-container">
+                    <div className="tabs-header">
+                        {tabs.map(tab => (
+                            <button
+                                key={tab.id}
+                                className={`tab-button ${activeTab === tab.id ? 'active' : ''}`}
+                                onClick={() => onTabChange(tab.id)}
+                            >
+                                {tab.icon} {tab.label}
+                                <span className="tab-badge">{tab.count}</span>
+                            </button>
+                        ))}
+                    </div>
+                    <div className="tab-content">
+                        {children}
+                    </div>
+                </div>
+            );
+        };
+        
+        // 통계 컴포넌트 (필터링된 데이터 기반)
+        const StatsGrid = ({ filteredData, activeTab }) => {
+            const stats = {
+                total: filteredData.length,
+                critical: filteredData.filter(a => a.priority === 'critical').length,
+                high: filteredData.filter(a => a.priority === 'high').length,
+                medium: filteredData.filter(a => a.priority === 'medium').length,
+                low: filteredData.filter(a => a.priority === 'low').length
+            };
+            
+            const getTabLabel = () => {
+                switch (activeTab) {
+                    case 'pending': return '대기';
+                    case 'approved': return '승인';
+                    case 'rejected': return '거부';
+                    case 'history': return '전체';
+                    default: return '요청';
+                }
+            };
+            
+            return (
+                <div className="stats-grid">
+                    <div className="stat-card">
+                        <div className="stat-number">{stats.total}</div>
+                        <div className="stat-label">{getTabLabel()} 요청</div>
+                    </div>
+                    <div className="stat-card">
+                        <div className="stat-number" style={{color: '#e53e3e'}}>{stats.critical}</div>
+                        <div className="stat-label">긴급</div>
+                    </div>
+                    <div className="stat-card">
+                        <div className="stat-number" style={{color: '#dd6b20'}}>{stats.high}</div>
+                        <div className="stat-label">높음</div>
+                    </div>
+                    <div className="stat-card">
+                        <div className="stat-number" style={{color: '#3182ce'}}>{stats.medium + stats.low}</div>
+                        <div className="stat-label">일반</div>
+                    </div>
+                </div>
+            );
+        };
+        
+        // 연구 시작 모달 컴포넌트
+        const StartResearchModal = ({ show, onClose, onSubmit }) => {
+            const [topic, setTopic] = useState('');
+            const [isSubmitting, setIsSubmitting] = useState(false);
+            
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                
+                if (!topic.trim()) {
+                    alert('연구 주제를 입력해주세요.');
+                    return;
+                }
+                
+                if (topic.trim().length < 5) {
+                    alert('연구 주제는 최소 5글자 이상 입력해주세요.');
+                    return;
+                }
+                
+                setIsSubmitting(true);
+                try {
+                    await onSubmit(topic.trim());
+                } finally {
+                    setIsSubmitting(false);
+                    setTopic('');
+                }
+            };
+            
+            const handleClose = () => {
+                setTopic('');
+                onClose();
+            };
+            
+            if (!show) return null;
+            
+            return (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 1000
+                }}>
+                    <div style={{
+                        background: 'white',
+                        borderRadius: '20px',
+                        padding: '30px',
+                        maxWidth: '500px',
+                        width: '90%',
+                        boxShadow: '0 20px 50px rgba(0, 0, 0, 0.3)'
+                    }}>
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '20px'
+                        }}>
+                            <h2 style={{
+                                fontSize: '1.5rem',
+                                fontWeight: '700',
+                                color: '#2d3748',
+                                margin: 0
+                            }}>
+                                🔬 새 연구 시작
+                            </h2>
+                            <button
+                                onClick={handleClose}
+                                style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    fontSize: '1.5rem',
+                                    cursor: 'pointer',
+                                    color: '#718096',
+                                    padding: '5px'
+                                }}
+                            >
+                                ×
+                            </button>
+                        </div>
+                        
+                        <form onSubmit={handleSubmit}>
+                            <div style={{ marginBottom: '20px' }}>
+                                <label style={{
+                                    display: 'block',
+                                    marginBottom: '8px',
+                                    fontWeight: '600',
+                                    color: '#2d3748'
+                                }}>
+                                    연구 주제를 입력하세요
+                                </label>
+                                <textarea
+                                    value={topic}
+                                    onChange={(e) => setTopic(e.target.value)}
+                                    placeholder="예: AI가 의료 진단에 미치는 영향 분석"
+                                    style={{
+                                        width: '100%',
+                                        minHeight: '80px',
+                                        padding: '12px',
+                                        border: '2px solid #e2e8f0',
+                                        borderRadius: '8px',
+                                        fontSize: '1rem',
+                                        resize: 'vertical',
+                                        fontFamily: 'inherit'
+                                    }}
+                                    onFocus={(e) => e.target.style.borderColor = '#667eea'}
+                                    onBlur={(e) => e.target.style.borderColor = '#e2e8f0'}
+                                    disabled={isSubmitting}
+                                />
+                                <div style={{
+                                    fontSize: '0.8rem',
+                                    color: '#718096',
+                                    marginTop: '5px'
+                                }}>
+                                    최소 5글자 이상 입력해주세요. 구체적일수록 더 정확한 연구 결과를 얻을 수 있습니다.
+                                </div>
+                            </div>
+                            
+                            <div style={{
+                                display: 'flex',
+                                gap: '12px',
+                                justifyContent: 'flex-end'
+                            }}>
+                                <button
+                                    type="button"
+                                    onClick={handleClose}
+                                    disabled={isSubmitting}
+                                    style={{
+                                        padding: '12px 20px',
+                                        border: '1px solid #e2e8f0',
+                                        background: 'white',
+                                        color: '#4a5568',
+                                        borderRadius: '8px',
+                                        cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                                        fontWeight: '600',
+                                        opacity: isSubmitting ? 0.6 : 1
+                                    }}
+                                >
+                                    취소
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isSubmitting || !topic.trim()}
+                                    style={{
+                                        padding: '12px 20px',
+                                        border: 'none',
+                                        background: isSubmitting || !topic.trim() ? '#cbd5e0' : '#667eea',
+                                        color: 'white',
+                                        borderRadius: '8px',
+                                        cursor: isSubmitting || !topic.trim() ? 'not-allowed' : 'pointer',
+                                        fontWeight: '600',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px'
+                                    }}
+                                >
+                                    {isSubmitting ? '🔄 시작 중...' : '🚀 연구 시작'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        };
+        
+        // A2A 채팅 컴포넌트 (CopilotKit 시뮬레이션)
+        const A2AChat = ({ show, onToggle }) => {
+            const { connected, messages, sendMessage } = useA2AConnection();
+            const [input, setInput] = useState('');
+            
+            const handleSend = () => {
+                if (input.trim()) {
+                    sendMessage(input);
+                    setInput('');
+                }
+            };
+            
+            return (
+                <>
+                    <button className="chat-toggle" onClick={onToggle}>
+                        💬
+                    </button>
+                    
+                    {show && (
+                        <div className="copilot-chat" style={{display: 'flex'}}>
+                            <div className="copilot-header">
+                                A2A Agent Chat {connected ? '🟢' : '🔴'}
+                            </div>
+                            <div className="copilot-messages">
+                                {messages.map((msg, idx) => (
+                                    <div key={idx} style={{
+                                        margin: '10px 0',
+                                        padding: '10px',
+                                        borderRadius: '8px',
+                                        background: msg.type === 'outgoing' ? '#667eea' : '#f7fafc',
+                                        color: msg.type === 'outgoing' ? 'white' : '#2d3748',
+                                        marginLeft: msg.type === 'outgoing' ? '20px' : '0',
+                                        marginRight: msg.type === 'incoming' ? '20px' : '0'
+                                    }}>
+                                        {msg.content}
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="copilot-input">
+                                <input
+                                    value={input}
+                                    onChange={(e) => setInput(e.target.value)}
+                                    onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+                                    placeholder="A2A 에이전트와 대화..."
+                                />
+                            </div>
+                        </div>
+                    )}
+                </>
+            );
+        };
+        
+        // 메인 앱 컴포넌트
+        const App = () => {
+            const [initialLoading, setInitialLoading] = useState(true);
+            const [showChat, setShowChat] = useState(false);
+            const [showStartResearchModal, setShowStartResearchModal] = useState(false);
+            const [activeTab, setActiveTab] = useState('pending');
+            const [a2aStatus, setA2aStatus] = useState(null);
+            
+            const { 
+                socket, 
+                connected, 
+                researchStatus,
+                loading,
+                filters,
+                setFilters,
+                pagination,
+                setPagination,
+                getFilteredData,
+                getPaginatedData,
+                getAvailableOptions,
+                getTotalCounts,
+                fetchApprovedApprovals,
+                fetchRejectedApprovals,
+                refreshData
+            } = useWebSocket();
+            
+            useEffect(() => {
+                // 초기 로딩 시뮬레이션
+                setTimeout(() => setInitialLoading(false), 2000);
+            }, []);
+
+            // A2A 상태 폴링
+            useEffect(() => {
+                let mounted = true;
+                const fetchStatus = async () => {
+                    try {
+                        const resp = await fetch('/api/a2a/status');
+                        if (!resp.ok) return;
+                        const data = await resp.json();
+                        if (mounted) setA2aStatus(data);
+                    } catch (e) {
+                        if (mounted) setA2aStatus({ reachable: false, healthy: false });
+                    }
+                };
+                fetchStatus();
+                const id = setInterval(fetchStatus, 5000);
+                return () => { mounted = false; clearInterval(id); };
+            }, []);
+            
+            const handleTabChange = (tabId) => {
+                setActiveTab(tabId);
+                // 해당 탭 데이터가 아직 로드되지 않았다면 로드
+                if (tabId === 'approved' && getTotalCounts().approved === 0) {
+                    fetchApprovedApprovals();
+                } else if (tabId === 'rejected' && getTotalCounts().rejected === 0) {
+                    fetchRejectedApprovals();
+                }
+            };
+            
+            const handleFiltersChange = (newFilters) => {
+                setFilters(newFilters);
+                // 필터가 바뀌면 첫 페이지로 리셋
+                setPagination(prev => ({
+                    ...prev,
+                    [activeTab]: { ...prev[activeTab], page: 1 }
+                }));
+            };
+            
+            const handlePageChange = (page) => {
+                setPagination(prev => ({
+                    ...prev,
+                    [activeTab]: { ...prev[activeTab], page }
+                }));
+            };
+            
+            const handlePageSizeChange = (pageSize) => {
+                setPagination(prev => ({
+                    ...prev,
+                    [activeTab]: { page: 1, pageSize }
+                }));
+            };
+            
+            const handleApprove = async (requestId, reviewer) => {
+                try {
+                    const response = await fetch(`/api/approvals/${requestId}/approve`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            request_id: requestId,
+                            decision: '승인',
+                            decided_by: reviewer
+                        })
+                    });
+                    
+                    if (response.ok) {
+                        alert('승인이 완료되었습니다.');
+                        // 데이터 새로고침
+                        refreshData();
+                    } else {
+                        alert('승인 처리 중 오류가 발생했습니다.');
+                    }
+                } catch (error) {
+                    console.error('승인 처리 오류:', error);
+                    alert('승인 처리 중 오류가 발생했습니다.');
+                }
+            };
+            
+            const handleReject = async (requestId, reviewer, reason) => {
+                try {
+                    const response = await fetch(`/api/approvals/${requestId}/reject`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            request_id: requestId,
+                            decision: '거부',
+                            decided_by: reviewer,
+                            reason: reason
+                        })
+                    });
+                    
+                    if (response.ok) {
+                        alert('거부가 완료되었습니다.');
+                        // 데이터 새로고침
+                        refreshData();
+                    } else {
+                        alert('거부 처리 중 오류가 발생했습니다.');
+                    }
+                } catch (error) {
+                    console.error('거부 처리 오류:', error);
+                    alert('거부 처리 중 오류가 발생했습니다.');
+                }
+            };
+            
+            const handleStartResearch = async (topic) => {
+                try {
+                    const response = await fetch('/api/research/start', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            topic: topic
+                        })
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        alert('DeepResearch가 시작되었습니다! 진행상황을 확인해보세요.');
+                        setShowStartResearchModal(false);
+                        // 데이터 새로고침
+                        refreshData();
+                    } else {
+                        alert(result.error || 'DeepResearch 시작 중 오류가 발생했습니다.');
+                    }
+                } catch (error) {
+                    console.error('DeepResearch 시작 오류:', error);
+                    alert('DeepResearch 시작 중 오류가 발생했습니다.');
+                }
+            };
+            
+            const getCurrentLoading = () => {
+                switch (activeTab) {
+                    case 'pending':
+                        return loading.pending;
+                    case 'approved':
+                        return loading.approved;
+                    case 'rejected':
+                        return loading.rejected;
+                    case 'history':
+                        return loading.pending || loading.approved || loading.rejected;
+                    default:
+                        return loading.pending;
+                }
+            };
+            
+            const getEmptyMessage = () => {
+                switch (activeTab) {
+                    case 'pending':
+                        return '대기 중인 승인 요청이 없습니다';
+                    case 'approved':
+                        return '승인된 요청이 없습니다';
+                    case 'rejected':
+                        return '거부된 요청이 없습니다';
+                    case 'history':
+                        return '처리된 요청이 없습니다';
+                    default:
+                        return '요청이 없습니다';
+                }
+            };
+            
+            if (initialLoading) {
+                return (
+                    <div className="loading">
+                        <div className="spinner"></div>
+                    </div>
+                );
+            }
+            
+            // 현재 탭의 페이지네이션된 데이터 가져오기
+            const currentPaginatedData = getPaginatedData(activeTab);
+            const currentLoading = getCurrentLoading();
+            const totalCounts = getTotalCounts();
+            const availableOptions = getAvailableOptions();
+            
+            return (
+                <div className="app-container">
+                    <div className="header">
+                        <h1>🤖 HITL Approval System</h1>
+                        <p>Human-In-The-Loop 승인 시스템 | A2A 통합 대시보드</p>
+                        <div style={{
+                            marginTop: '15px',
+                            fontSize: '0.9rem',
+                            display: 'flex',
+                            gap: '12px',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                        }}>
+                            <span style={{ color: connected ? '#38a169' : '#e53e3e' }}>
+                                WebSocket: {connected ? '🟢 연결됨' : '🔴 연결 안됨'}
+                            </span>
+                            <span style={{ color: (a2aStatus && a2aStatus.reachable) ? '#38a169' : '#e53e3e' }}>
+                                A2A: {(a2aStatus && a2aStatus.reachable) ? '🟢 연결됨' : '🔴 연결 안됨'}
+                                {a2aStatus && a2aStatus.agent && a2aStatus.agent.name ? ` (${a2aStatus.agent.name})` : ''}
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <ResearchStatusCard status={researchStatus} />
+                    
+                    <StatsGrid 
+                        filteredData={getFilteredData(activeTab)}
+                        activeTab={activeTab}
+                    />
+                    
+                    <TabsContainer
+                        activeTab={activeTab}
+                        onTabChange={handleTabChange}
+                        pendingCount={totalCounts.pending}
+                        approvedCount={totalCounts.approved}
+                        rejectedCount={totalCounts.rejected}
+                    >
+                        <FiltersContainer
+                            filters={filters}
+                            onFiltersChange={handleFiltersChange}
+                            availableAgents={availableOptions.agents}
+                            availableTypes={availableOptions.types}
+                            activeTab={activeTab}
+                        />
+                        
+                        {currentLoading ? (
+                            <div className="loading">
+                                <div className="spinner"></div>
+                            </div>
+                        ) : (
+                            <>
+                                <div className="approvals-container">
+                                    {currentPaginatedData?.data?.length === 0 ? (
+                                        <div className="empty-state">
+                                            <div className="empty-state-icon">📝</div>
+                                            <h3>{getEmptyMessage()}</h3>
+                                            <p>새로운 요청이 생성되면 여기에 표시됩니다.</p>
+                                        </div>
+                                    ) : (
+                                        currentPaginatedData?.data?.map(approval => (
+                                            <ApprovalCard
+                                                key={approval.request_id}
+                                                approval={approval}
+                                                onApprove={handleApprove}
+                                                onReject={handleReject}
+                                                showActions={activeTab === 'pending'}
+                                            />
+                                        ))
+                                    )}
+                                </div>
+                                
+                                <Pagination
+                                    currentPage={currentPaginatedData?.currentPage || 1}
+                                    totalPages={currentPaginatedData?.totalPages || 1}
+                                    totalItems={currentPaginatedData?.totalItems || 0}
+                                    pageSize={currentPaginatedData?.pageSize || 10}
+                                    onPageChange={handlePageChange}
+                                    onPageSizeChange={handlePageSizeChange}
+                                />
+                            </>
+                        )}
+                    </TabsContainer>
+                    
+                    <A2AChat 
+                        show={showChat} 
+                        onToggle={() => setShowChat(!showChat)} 
+                    />
+                    
+                    <StartResearchModal
+                        show={showStartResearchModal}
+                        onClose={() => setShowStartResearchModal(false)}
+                        onSubmit={handleStartResearch}
+                    />
+                    
+                    {/* 연구 시작 플로팅 버튼 */}
+                    <button
+                        onClick={() => setShowStartResearchModal(true)}
+                        style={{
+                            position: 'fixed',
+                            bottom: '90px',
+                            right: '20px',
+                            width: '60px',
+                            height: '60px',
+                            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '50%',
+                            cursor: 'pointer',
+                            boxShadow: '0 4px 20px rgba(16, 185, 129, 0.4)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '1.5rem',
+                            zIndex: 999,
+                            transition: 'all 0.3s ease',
+                            animation: !researchStatus ? 'pulse 2s ease-in-out infinite' : 'none'
+                        }}
+                        onMouseEnter={(e) => {
+                            e.target.style.transform = 'scale(1.1)';
+                            e.target.style.boxShadow = '0 6px 30px rgba(16, 185, 129, 0.6)';
+                        }}
+                        onMouseLeave={(e) => {
+                            e.target.style.transform = 'scale(1)';
+                            e.target.style.boxShadow = '0 4px 20px rgba(16, 185, 129, 0.4)';
+                        }}
+                        title="새 연구 시작"
+                        disabled={researchStatus && researchStatus.type !== 'research_completed'}
+                    >
+                        🔬
+                    </button>
+                </div>
+            );
+        };
+        
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>

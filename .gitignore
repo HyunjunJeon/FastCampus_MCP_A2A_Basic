@@ -1,0 +1,21 @@
+# Mac OS
+_DS_Store
+
+# Virtual Environment
+.venv/
+venv/
+.env
+
+# IDE & Cache & Python
+*.lock
+.python-version
+.vscode/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# AI Folder
+shrimp_data/
+*mcp.json
+.serena/

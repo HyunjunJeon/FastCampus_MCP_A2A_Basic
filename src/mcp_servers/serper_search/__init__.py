@@ -1,0 +1,1 @@
+"""Serper Google 검색 MCP 서버"""

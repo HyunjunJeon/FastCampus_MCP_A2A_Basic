@@ -1,0 +1,40 @@
+---
+alwaysApply: true
+description: Code Index-first navigation and minimal-impact editing policy
+---
+
+# Code Index-First Workflow
+
+항상 코드 편집/리뷰/탐색 전에 프로젝트 인덱스를 먼저 확인하고, 필요한 파일만 최소 범위로 수정합니다. 변경으로 영향받는 경로를 식별하고 관련 테스트/문서를 함께 갱신합니다.
+
+## Entry Points
+
+- 전체 개요: [code_index.md](mdc:code_index.md)
+- 소스 허브: [src/code_index.md](mdc:src/code_index.md)
+
+### 하위 모듈 인덱스
+
+- A2A 통합: [src/a2a_integration/code_index.md](mdc:src/a2a_integration/code_index.md)
+- 설정: [src/config/code_index.md](mdc:src/config/code_index.md)
+- HITL 코어: [src/hitl/code_index.md](mdc:src/hitl/code_index.md)
+- HITL 웹: [src/hitl_web/code_index.md](mdc:src/hitl_web/code_index.md)
+- LangGraph 에이전트: [src/lg_agents/code_index.md](mdc:src/lg_agents/code_index.md)
+- MCP 서버: [src/mcp_servers/code_index.md](mdc:src/mcp_servers/code_index.md)
+- 유틸리티: [src/utils/code_index.md](mdc:src/utils/code_index.md)
+
+## Editing Policy
+
+1) 변경 계획 수립: 인덱스를 기반으로 수정 대상(필수 파일)과 주변 영향 경로(참조/임포트/호출부)를 식별합니다.
+
+2) 최소 변경: 요구사항을 충족하는 가장 작은 단위로 수정하고, 불필요한 리팩터링/포맷 변경을 피합니다.
+
+3) 일관성 유지: 새로운 파일/모듈을 추가할 경우, 해당 모듈의 `code_index.md`와 루트 인덱스에 역할을 2줄 이내로 추가합니다.
+
+4) 영향 분석: 수정 후 호출 관계, A2A/HITL/LangGraph 경계면(서버/클라이언트/그래프 노드/웹 UI)을 재점검합니다.
+
+5) 검증: 관련 테스트 스위트와 예제 스크립트를 우선 실행합니다. 자세한 위치는 [README.md](mdc:README.md)와 `tests/`의 개별 테스트 파일을 참고하세요.
+
+## 참고
+
+- 인덱스와 불일치 발견 시 먼저 인덱스를 갱신한 뒤 코드를 정리합니다.
+- 링크는 항상 클릭 가능한 마크다운 형태([문서](경로))로 유지합니다.

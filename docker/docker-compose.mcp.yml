@@ -1,0 +1,125 @@
+# MCP 서버들을 위한 Docker Compose 설정
+# Tavily, ArXiv, Serper 검색 서버들을 독립적으로 실행
+
+services:
+  # Tavily 웹 검색 MCP 서버
+  tavily-mcp:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.mcp
+    container_name: mcp_tavily_server
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - HOST=0.0.0.0
+      - LOG_LEVEL=info
+      - TAVILY_API_KEY=${TAVILY_API_KEY:-}
+    env_file:
+      - ../.env
+    command: ["uv", "run", "python", "src/mcp_servers/tavily_search/server.py"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - mcp_network
+
+  # ArXiv 논문 검색 MCP 서버
+  arxiv-mcp:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.mcp
+    container_name: mcp_arxiv_server
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - HOST=0.0.0.0
+      - LOG_LEVEL=info
+    env_file:
+      - ../.env
+    command: ["uv", "run", "python", "src/mcp_servers/arxiv_search/server.py"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - mcp_network
+
+  # Serper Google 검색 MCP 서버
+  serper-mcp:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.mcp
+    container_name: mcp_serper_server
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    environment:
+      - PORT=3002
+      - HOST=0.0.0.0
+      - LOG_LEVEL=info
+      - SERPER_API_KEY=${SERPER_API_KEY:-}
+    env_file:
+      - ../.env
+    command: ["uv", "run", "python", "src/mcp_servers/serper_search/server.py"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - mcp_network
+
+  # Redis (MCP 서버들이 캐싱에 사용할 수 있음)
+  redis:
+    image: redis:7-alpine
+    container_name: mcp_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - mcp_network
+
+  # Redis Commander (선택사항 - 개발용)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: mcp_redis_commander
+    restart: unless-stopped
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+      - HTTP_USER=admin
+      - HTTP_PASSWORD=mcp2025
+    ports:
+      - "8081:8081"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - mcp_network
+    profiles:
+      - tools
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  mcp_network:
+    driver: bridge

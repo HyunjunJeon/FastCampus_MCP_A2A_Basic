@@ -1,0 +1,1799 @@
+This file is a merged representation of a subset of the codebase, containing specifically included files, combined into a single document by Repomix.
+The content has been processed where security check has been disabled.
+
+================================================================
+File Summary
+================================================================
+
+Purpose:
+--------
+This file contains a packed representation of a subset of the repository's contents that is considered the most important context.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+
+File Format:
+------------
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  a. A separator line (================)
+  b. The file path (File: path/to/file)
+  c. Another separator line
+  d. The full contents of the file
+  e. A blank line
+
+Usage Guidelines:
+-----------------
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+
+Notes:
+------
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Only files matching these patterns are included: langchain_mcp_adapters/**/*.*, examples/servers/streamable-http-stateless/**/*.*, README.md
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Security check has been disabled - content may contain sensitive information
+- Files are sorted by Git change count (files with more changes are at the bottom)
+
+
+================================================================
+Directory Structure
+================================================================
+examples/
+  servers/
+    streamable-http-stateless/
+      mcp_simple_streamablehttp_stateless/
+        __main__.py
+        server.py
+      pyproject.toml
+      README.md
+langchain_mcp_adapters/
+  __init__.py
+  client.py
+  prompts.py
+  resources.py
+  sessions.py
+  tools.py
+README.md
+
+================================================================
+Files
+================================================================
+
+================
+File: examples/servers/streamable-http-stateless/mcp_simple_streamablehttp_stateless/__main__.py
+================
+from .server import main
+
+if __name__ == "__main__":
+    main()
+
+================
+File: examples/servers/streamable-http-stateless/mcp_simple_streamablehttp_stateless/server.py
+================
+"""Simple MCP server example using streamable HTTP transport.
+
+This module demonstrates a basic MCP server implementation using streamable HTTP
+transport with basic math operations (add and multiply).
+"""
+
+import contextlib
+import logging
+from collections.abc import AsyncIterator
+
+import click
+import mcp.types as types
+from mcp.server.lowlevel import Server
+from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
+from starlette.applications import Starlette
+from starlette.routing import Mount
+from starlette.types import Receive, Scope, Send
+
+logger = logging.getLogger(__name__)
+
+
+@click.command()
+@click.option("--port", default=3000, help="Port to listen on for HTTP")
+@click.option(
+    "--log-level",
+    default="INFO",
+    help="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)",
+)
+@click.option(
+    "--json-response",
+    is_flag=True,
+    default=False,
+    help="Enable JSON responses instead of SSE streams",
+)
+def main(
+    port: int,
+    log_level: str,
+    json_response: bool,
+) -> int:
+    """Run the MCP server with streamable HTTP transport.
+
+    Args:
+        port: Port to listen on for HTTP requests.
+        log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL).
+        json_response: Whether to enable JSON responses instead of SSE streams.
+
+    Returns:
+        Exit code (0 for success).
+    """
+    # Configure logging
+    logging.basicConfig(
+        level=getattr(logging, log_level.upper()),
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
+
+    app = Server("mcp-streamable-http-stateless-demo")
+
+    @app.call_tool()
+    async def call_tool(
+        name: str, arguments: dict
+    ) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
+        """Handle tool calls for math operations.
+
+        Args:
+            name: Name of the tool to call.
+            arguments: Dictionary of arguments for the tool.
+
+        Returns:
+            List of content objects with the tool result.
+
+        Raises:
+            ValueError: If the tool name is not recognized.
+        """
+        if name == "add":
+            return [
+                types.TextContent(
+                    type="text",
+                    text=str(arguments["a"] + arguments["b"])
+                )
+            ]
+        elif name == "multiply":
+            return [
+                types.TextContent(
+                    type="text",
+                    text=str(arguments["a"] * arguments["b"])
+                )
+            ]
+        else:
+            raise ValueError(f"Tool {name} not found")
+
+    @app.list_tools()
+    async def list_tools() -> list[types.Tool]:
+        """List all available tools provided by this server.
+
+        Returns:
+            List of tool definitions for add and multiply operations.
+        """
+        return [
+            types.Tool(
+                name="add",
+                description="Adds two numbers",
+                inputSchema={
+                    "type": "object",
+                    "required": ["a", "b"],
+                    "properties": {
+                        "a": {
+                            "type": "number",
+                            "description": "First number to add",
+                        },
+                        "b": {
+                            "type": "number",
+                            "description": "Second number to add",
+                        },
+                    },
+                },
+            ),
+            types.Tool(
+                name="multiply",
+                description="Multiplies two numbers",
+                inputSchema={
+                    "type": "object",
+                    "required": ["a", "b"],
+                    "properties": {
+                        "a": {
+                            "type": "number",
+                            "description": "First number to multiply",
+                        },
+                        "b": {
+                            "type": "number",
+                            "description": "Second number to multiply",
+                        },
+                    },
+                },
+            )
+        ]
+
+    # Create the session manager with true stateless mode
+    session_manager = StreamableHTTPSessionManager(
+        app=app,
+        event_store=None,
+        json_response=json_response,
+        stateless=True,
+    )
+
+    async def handle_streamable_http(
+        scope: Scope, receive: Receive, send: Send
+    ) -> None:
+        """Handle streamable HTTP requests through the session manager.
+
+        Args:
+            scope: ASGI scope object.
+            receive: ASGI receive callable.
+            send: ASGI send callable.
+        """
+        await session_manager.handle_request(scope, receive, send)
+
+    @contextlib.asynccontextmanager
+    async def lifespan(app: Starlette) -> AsyncIterator[None]:
+        """Context manager for session manager lifecycle.
+
+        Args:
+            app: The Starlette application instance.
+
+        Yields:
+            None during the application lifetime.
+        """
+        async with session_manager.run():
+            logger.info("Application started with StreamableHTTP session manager!")
+            try:
+                yield
+            finally:
+                logger.info("Application shutting down...")
+
+    # Create an ASGI application using the transport
+    starlette_app = Starlette(
+        debug=True,
+        routes=[
+            Mount("/mcp", app=handle_streamable_http),
+        ],
+        lifespan=lifespan,
+    )
+
+    import uvicorn
+
+    uvicorn.run(starlette_app, host="0.0.0.0", port=port)
+
+    return 0
+
+================
+File: examples/servers/streamable-http-stateless/pyproject.toml
+================
+[project]
+name = "mcp-simple-streamablehttp-stateless"
+version = "0.1.0"
+description = "A simple MCP server exposing a StreamableHttp transport in stateless mode"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Anthropic, PBC." }]
+keywords = ["mcp", "llm", "automation", "web", "fetch", "http", "streamable", "stateless"]
+license = { text = "MIT" }
+dependencies = ["anyio>=4.5", "click>=8.1.0", "httpx>=0.27", "mcp", "starlette", "uvicorn"]
+
+[project.scripts]
+mcp-simple-streamablehttp-stateless = "mcp_simple_streamablehttp_stateless.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["mcp_simple_streamablehttp_stateless"]
+
+[tool.pyright]
+include = ["mcp_simple_streamablehttp_stateless"]
+venvPath = "."
+venv = ".venv"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = []
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.uv]
+dev-dependencies = ["pyright>=1.1.378", "pytest>=8.3.3", "ruff>=0.6.9"]
+
+================
+File: examples/servers/streamable-http-stateless/README.md
+================
+# MCP Simple StreamableHttp Stateless Server Example
+
+> Adapted from the [official Python MCP SDK example](https://github.com/modelcontextprotocol/python-sdk/tree/main/examples/servers/simple-streamablehttp-stateless)
+
+A stateless MCP server example demonstrating the StreamableHttp transport without maintaining session state. This example is ideal for understanding how to deploy MCP servers in multi-node environments where requests can be routed to any instance.
+
+## Features
+
+- Uses the StreamableHTTP transport in stateless mode (mcp_session_id=None)
+- Each request creates a new ephemeral connection
+- No session state maintained between requests
+- Task lifecycle scoped to individual requests
+- Suitable for deployment in multi-node environments
+
+
+## Usage
+
+Start the server:
+
+```bash
+# Using default port 3000
+uv run mcp-simple-streamablehttp-stateless
+
+# Using custom port
+uv run mcp-simple-streamablehttp-stateless --port 3000
+
+# Custom logging level
+uv run mcp-simple-streamablehttp-stateless --log-level DEBUG
+
+# Enable JSON responses instead of SSE streams
+uv run mcp-simple-streamablehttp-stateless --json-response
+```
+
+The server exposes a tool named "start-notification-stream" that accepts three arguments:
+
+- `interval`: Time between notifications in seconds (e.g., 1.0)
+- `count`: Number of notifications to send (e.g., 5)
+- `caller`: Identifier string for the caller
+
+
+## Client
+
+You can connect to this server using an HTTP client. For now, only the TypeScript SDK has streamable HTTP client examples, or you can use [Inspector](https://github.com/modelcontextprotocol/inspector) for testing.
+
+================
+File: langchain_mcp_adapters/__init__.py
+================
+"""LangChain MCP Adapters - Connect MCP servers with LangChain applications.
+
+This package provides adapters to connect MCP (Model Context Protocol) servers
+with LangChain applications, converting MCP tools, prompts, and resources into
+LangChain-compatible formats.
+"""
+
+================
+File: langchain_mcp_adapters/client.py
+================
+"""Client for connecting to multiple MCP servers and loading LangChain tools/resources.
+
+This module provides the MultiServerMCPClient class for managing connections to multiple
+MCP servers and loading tools, prompts, and resources from them.
+"""
+
+import asyncio
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from types import TracebackType
+from typing import Any
+
+from langchain_core.documents.base import Blob
+from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.tools import BaseTool
+from mcp import ClientSession
+
+from langchain_mcp_adapters.prompts import load_mcp_prompt
+from langchain_mcp_adapters.resources import load_mcp_resources
+from langchain_mcp_adapters.sessions import (
+    Connection,
+    McpHttpClientFactory,
+    SSEConnection,
+    StdioConnection,
+    StreamableHttpConnection,
+    WebsocketConnection,
+    create_session,
+)
+from langchain_mcp_adapters.tools import load_mcp_tools
+
+ASYNC_CONTEXT_MANAGER_ERROR = (
+    "As of langchain-mcp-adapters 0.1.0, MultiServerMCPClient cannot be used as a "
+    "context manager (e.g., async with MultiServerMCPClient(...)). "
+    "Instead, you can do one of the following:\n"
+    "1. client = MultiServerMCPClient(...)\n"
+    "   tools = await client.get_tools()\n"
+    "2. client = MultiServerMCPClient(...)\n"
+    "   async with client.session(server_name) as session:\n"
+    "       tools = await load_mcp_tools(session)"
+)
+
+
+class MultiServerMCPClient:
+    """Client for connecting to multiple MCP servers.
+
+    Loads LangChain-compatible tools, prompts and resources from MCP servers.
+    """
+
+    def __init__(self, connections: dict[str, Connection] | None = None) -> None:
+        """Initialize a MultiServerMCPClient with MCP servers connections.
+
+        Args:
+            connections: A dictionary mapping server names to connection configurations.
+                If None, no initial connections are established.
+
+        Example: basic usage (starting a new session on each tool call)
+
+        ```python
+        from langchain_mcp_adapters.client import MultiServerMCPClient
+
+        client = MultiServerMCPClient(
+            {
+                "math": {
+                    "command": "python",
+                    # Make sure to update to the full absolute path to your
+                    # math_server.py file
+                    "args": ["/path/to/math_server.py"],
+                    "transport": "stdio",
+                },
+                "weather": {
+                    # Make sure you start your weather server on port 8000
+                    "url": "http://localhost:8000/mcp",
+                    "transport": "streamable_http",
+                }
+            }
+        )
+        all_tools = await client.get_tools()
+        ```
+
+        Example: explicitly starting a session
+
+        ```python
+        from langchain_mcp_adapters.client import MultiServerMCPClient
+        from langchain_mcp_adapters.tools import load_mcp_tools
+
+        client = MultiServerMCPClient({...})
+        async with client.session("math") as session:
+            tools = await load_mcp_tools(session)
+        ```
+
+        """
+        self.connections: dict[str, Connection] = (
+            connections if connections is not None else {}
+        )
+
+    @asynccontextmanager
+    async def session(
+        self,
+        server_name: str,
+        *,
+        auto_initialize: bool = True,
+    ) -> AsyncIterator[ClientSession]:
+        """Connect to an MCP server and initialize a session.
+
+        Args:
+            server_name: Name to identify this server connection
+            auto_initialize: Whether to automatically initialize the session
+
+        Raises:
+            ValueError: If the server name is not found in the connections
+
+        Yields:
+            An initialized ClientSession
+
+        """
+        if server_name not in self.connections:
+            msg = (
+                f"Couldn't find a server with name '{server_name}', "
+                f"expected one of '{list(self.connections.keys())}'"
+            )
+            raise ValueError(msg)
+
+        async with create_session(self.connections[server_name]) as session:
+            if auto_initialize:
+                await session.initialize()
+            yield session
+
+    async def get_tools(self, *, server_name: str | None = None) -> list[BaseTool]:
+        """Get a list of all tools from all connected servers.
+
+        Args:
+            server_name: Optional name of the server to get tools from.
+                If None, all tools from all servers will be returned (default).
+
+        NOTE: a new session will be created for each tool call
+
+        Returns:
+            A list of LangChain tools
+
+        """
+        if server_name is not None:
+            if server_name not in self.connections:
+                msg = (
+                    f"Couldn't find a server with name '{server_name}', "
+                    f"expected one of '{list(self.connections.keys())}'"
+                )
+                raise ValueError(msg)
+            return await load_mcp_tools(None, connection=self.connections[server_name])
+
+        all_tools: list[BaseTool] = []
+        load_mcp_tool_tasks = []
+        for connection in self.connections.values():
+            load_mcp_tool_task = asyncio.create_task(
+                load_mcp_tools(None, connection=connection)
+            )
+            load_mcp_tool_tasks.append(load_mcp_tool_task)
+        tools_list = await asyncio.gather(*load_mcp_tool_tasks)
+        for tools in tools_list:
+            all_tools.extend(tools)
+        return all_tools
+
+    async def get_prompt(
+        self,
+        server_name: str,
+        prompt_name: str,
+        *,
+        arguments: dict[str, Any] | None = None,
+    ) -> list[HumanMessage | AIMessage]:
+        """Get a prompt from a given MCP server."""
+        async with self.session(server_name) as session:
+            return await load_mcp_prompt(session, prompt_name, arguments=arguments)
+
+    async def get_resources(
+        self,
+        server_name: str,
+        *,
+        uris: str | list[str] | None = None,
+    ) -> list[Blob]:
+        """Get resources from a given MCP server.
+
+        Args:
+            server_name: Name of the server to get resources from
+            uris: Optional resource URI or list of URIs to load. If not provided,
+                all resources will be loaded.
+
+        Returns:
+            A list of LangChain Blobs
+
+        """
+        async with self.session(server_name) as session:
+            return await load_mcp_resources(session, uris=uris)
+
+    async def __aenter__(self) -> "MultiServerMCPClient":
+        """Async context manager entry point.
+
+        Raises:
+            NotImplementedError: Context manager support has been removed.
+        """
+        raise NotImplementedError(ASYNC_CONTEXT_MANAGER_ERROR)
+
+    def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        """Async context manager exit point.
+
+        Args:
+            exc_type: Exception type if an exception occurred.
+            exc_val: Exception value if an exception occurred.
+            exc_tb: Exception traceback if an exception occurred.
+
+        Raises:
+            NotImplementedError: Context manager support has been removed.
+        """
+        raise NotImplementedError(ASYNC_CONTEXT_MANAGER_ERROR)
+
+
+__all__ = [
+    "McpHttpClientFactory",
+    "MultiServerMCPClient",
+    "SSEConnection",
+    "StdioConnection",
+    "StreamableHttpConnection",
+    "WebsocketConnection",
+]
+
+================
+File: langchain_mcp_adapters/prompts.py
+================
+"""Prompts adapter for converting MCP prompts to LangChain messages.
+
+This module provides functionality to convert MCP prompt messages into LangChain
+message objects, handling both user and assistant message types.
+"""
+
+from typing import Any
+
+from langchain_core.messages import AIMessage, HumanMessage
+from mcp import ClientSession
+from mcp.types import PromptMessage
+
+
+def convert_mcp_prompt_message_to_langchain_message(
+    message: PromptMessage,
+) -> HumanMessage | AIMessage:
+    """Convert an MCP prompt message to a LangChain message.
+
+    Args:
+        message: MCP prompt message to convert
+
+    Returns:
+        A LangChain message
+
+    """
+    if message.content.type == "text":
+        if message.role == "user":
+            return HumanMessage(content=message.content.text)
+        if message.role == "assistant":
+            return AIMessage(content=message.content.text)
+        msg = f"Unsupported prompt message role: {message.role}"
+        raise ValueError(msg)
+
+    msg = f"Unsupported prompt message content type: {message.content.type}"
+    raise ValueError(msg)
+
+
+async def load_mcp_prompt(
+    session: ClientSession,
+    name: str,
+    *,
+    arguments: dict[str, Any] | None = None,
+) -> list[HumanMessage | AIMessage]:
+    """Load MCP prompt and convert to LangChain messages.
+
+    Args:
+        session: The MCP client session.
+        name: Name of the prompt to load.
+        arguments: Optional arguments to pass to the prompt.
+
+    Returns:
+        A list of LangChain messages converted from the MCP prompt.
+    """
+    response = await session.get_prompt(name, arguments)
+    return [
+        convert_mcp_prompt_message_to_langchain_message(message)
+        for message in response.messages
+    ]
+
+================
+File: langchain_mcp_adapters/resources.py
+================
+"""Resources adapter for converting MCP resources to LangChain Blobs.
+
+This module provides functionality to convert MCP resources into LangChain Blob
+objects, handling both text and binary resource content types.
+"""
+
+import base64
+
+from langchain_core.documents.base import Blob
+from mcp import ClientSession
+from mcp.types import BlobResourceContents, ResourceContents, TextResourceContents
+
+
+def convert_mcp_resource_to_langchain_blob(
+    resource_uri: str, contents: ResourceContents
+) -> Blob:
+    """Convert an MCP resource content to a LangChain Blob.
+
+    Args:
+        resource_uri: URI of the resource
+        contents: The resource contents
+
+    Returns:
+        A LangChain Blob
+
+    """
+    if isinstance(contents, TextResourceContents):
+        data = contents.text
+    elif isinstance(contents, BlobResourceContents):
+        data = base64.b64decode(contents.blob)
+    else:
+        msg = f"Unsupported content type for URI {resource_uri}"
+        raise TypeError(msg)
+
+    return Blob.from_data(
+        data=data, mime_type=contents.mimeType, metadata={"uri": resource_uri}
+    )
+
+
+async def get_mcp_resource(session: ClientSession, uri: str) -> list[Blob]:
+    """Fetch a single MCP resource and convert it to LangChain Blobs.
+
+    Args:
+        session: MCP client session.
+        uri: URI of the resource to fetch.
+
+    Returns:
+        A list of LangChain Blobs.
+    """
+    contents_result = await session.read_resource(uri)
+    if not contents_result.contents or len(contents_result.contents) == 0:
+        return []
+
+    return [
+        convert_mcp_resource_to_langchain_blob(uri, content)
+        for content in contents_result.contents
+    ]
+
+
+async def load_mcp_resources(
+    session: ClientSession,
+    *,
+    uris: str | list[str] | None = None,
+) -> list[Blob]:
+    """Load MCP resources and convert them to LangChain Blobs.
+
+    Args:
+        session: MCP client session.
+        uris: List of URIs to load. If None, all resources will be loaded.
+            Note: Dynamic resources will NOT be loaded when None is specified,
+            as they require parameters and are ignored by the MCP SDK's
+            session.list_resources() method.
+
+    Returns:
+        A list of LangChain Blobs.
+
+    Raises:
+        RuntimeError: If an error occurs while fetching a resource.
+    """
+    blobs = []
+
+    if uris is None:
+        resources_list = await session.list_resources()
+        uri_list = [r.uri for r in resources_list.resources]
+    elif isinstance(uris, str):
+        uri_list = [uris]
+    else:
+        uri_list = uris
+
+    current_uri = None
+    try:
+        for uri in uri_list:
+            current_uri = uri
+            resource_blobs = await get_mcp_resource(session, uri)
+            blobs.extend(resource_blobs)
+    except Exception as e:
+        msg = f"Error fetching resource {current_uri}"
+        raise RuntimeError(msg) from e
+
+    return blobs
+
+================
+File: langchain_mcp_adapters/sessions.py
+================
+"""Session management for different MCP transport types.
+
+This module provides connection configurations and session management for various
+MCP transport types including stdio, SSE, WebSocket, and streamable HTTP.
+"""
+
+from __future__ import annotations
+
+import os
+from contextlib import asynccontextmanager
+from datetime import timedelta
+from typing import TYPE_CHECKING, Any, Literal, Protocol
+
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.sse import sse_client
+from mcp.client.stdio import stdio_client
+from mcp.client.streamable_http import streamablehttp_client
+from typing_extensions import NotRequired, TypedDict
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+    from pathlib import Path
+
+    import httpx
+
+EncodingErrorHandler = Literal["strict", "ignore", "replace"]
+
+DEFAULT_ENCODING = "utf-8"
+DEFAULT_ENCODING_ERROR_HANDLER: EncodingErrorHandler = "strict"
+
+DEFAULT_HTTP_TIMEOUT = 5
+DEFAULT_SSE_READ_TIMEOUT = 60 * 5
+
+DEFAULT_STREAMABLE_HTTP_TIMEOUT = timedelta(seconds=30)
+DEFAULT_STREAMABLE_HTTP_SSE_READ_TIMEOUT = timedelta(seconds=60 * 5)
+
+
+class McpHttpClientFactory(Protocol):
+    """Protocol for creating httpx.AsyncClient instances for MCP connections."""
+
+    def __call__(
+        self,
+        headers: dict[str, str] | None = None,
+        timeout: httpx.Timeout | None = None,
+        auth: httpx.Auth | None = None,
+    ) -> httpx.AsyncClient:
+        """Create an httpx.AsyncClient instance.
+
+        Args:
+            headers: HTTP headers to include in requests.
+            timeout: Request timeout configuration.
+            auth: Authentication configuration.
+
+        Returns:
+            Configured httpx.AsyncClient instance.
+        """
+        ...
+
+
+class StdioConnection(TypedDict):
+    """Configuration for stdio transport connections to MCP servers."""
+
+    transport: Literal["stdio"]
+
+    command: str
+    """The executable to run to start the server."""
+
+    args: list[str]
+    """Command line arguments to pass to the executable."""
+
+    env: NotRequired[dict[str, str] | None]
+    """The environment to use when spawning the process."""
+
+    cwd: NotRequired[str | Path | None]
+    """The working directory to use when spawning the process."""
+
+    encoding: NotRequired[str]
+    """The text encoding used when sending/receiving messages to the server.
+
+    Default is 'utf-8'.
+    """
+
+    encoding_error_handler: NotRequired[EncodingErrorHandler]
+    """
+    The text encoding error handler.
+
+    See https://docs.python.org/3/library/codecs.html#codec-base-classes for
+    explanations of possible values.
+
+    Default is 'strict', which raises an error on encoding/decoding errors.
+    """
+
+    session_kwargs: NotRequired[dict[str, Any] | None]
+    """Additional keyword arguments to pass to the ClientSession."""
+
+
+class SSEConnection(TypedDict):
+    """Configuration for Server-Sent Events (SSE) transport connections to MCP."""
+
+    transport: Literal["sse"]
+
+    url: str
+    """The URL of the SSE endpoint to connect to."""
+
+    headers: NotRequired[dict[str, Any] | None]
+    """HTTP headers to send to the SSE endpoint."""
+
+    timeout: NotRequired[float]
+    """HTTP timeout.
+
+    Default is 5 seconds. If the server takes longer to respond,
+    you can increase this value.
+    """
+
+    sse_read_timeout: NotRequired[float]
+    """SSE read timeout.
+
+    Default is 300 seconds (5 minutes). This is how long the client will
+    wait for a new event before disconnecting.
+    """
+
+    session_kwargs: NotRequired[dict[str, Any] | None]
+    """Additional keyword arguments to pass to the ClientSession."""
+
+    httpx_client_factory: NotRequired[McpHttpClientFactory | None]
+    """Custom factory for httpx.AsyncClient (optional)."""
+
+    auth: NotRequired[httpx.Auth]
+    """Optional authentication for the HTTP client."""
+
+
+class StreamableHttpConnection(TypedDict):
+    """Connection configuration for Streamable HTTP transport."""
+
+    transport: Literal["streamable_http"]
+
+    url: str
+    """The URL of the endpoint to connect to."""
+
+    headers: NotRequired[dict[str, Any] | None]
+    """HTTP headers to send to the endpoint."""
+
+    timeout: NotRequired[timedelta]
+    """HTTP timeout."""
+
+    sse_read_timeout: NotRequired[timedelta]
+    """How long (in seconds) the client will wait for a new event before disconnecting.
+    All other HTTP operations are controlled by `timeout`."""
+
+    terminate_on_close: NotRequired[bool]
+    """Whether to terminate the session on close."""
+
+    session_kwargs: NotRequired[dict[str, Any] | None]
+    """Additional keyword arguments to pass to the ClientSession."""
+
+    httpx_client_factory: NotRequired[McpHttpClientFactory | None]
+    """Custom factory for httpx.AsyncClient (optional)."""
+
+    auth: NotRequired[httpx.Auth]
+    """Optional authentication for the HTTP client."""
+
+
+class WebsocketConnection(TypedDict):
+    """Configuration for WebSocket transport connections to MCP servers."""
+
+    transport: Literal["websocket"]
+
+    url: str
+    """The URL of the Websocket endpoint to connect to."""
+
+    session_kwargs: NotRequired[dict[str, Any] | None]
+    """Additional keyword arguments to pass to the ClientSession"""
+
+
+Connection = (
+    StdioConnection | SSEConnection | StreamableHttpConnection | WebsocketConnection
+)
+
+
+@asynccontextmanager
+async def _create_stdio_session(  # noqa: PLR0913
+    *,
+    command: str,
+    args: list[str],
+    env: dict[str, str] | None = None,
+    cwd: str | Path | None = None,
+    encoding: str = DEFAULT_ENCODING,
+    encoding_error_handler: Literal[
+        "strict", "ignore", "replace"
+    ] = DEFAULT_ENCODING_ERROR_HANDLER,
+    session_kwargs: dict[str, Any] | None = None,
+) -> AsyncIterator[ClientSession]:
+    """Create a new session to an MCP server using stdio.
+
+    Args:
+        command: Command to execute.
+        args: Arguments for the command.
+        env: Environment variables for the command.
+        cwd: Working directory for the command.
+        encoding: Character encoding.
+        encoding_error_handler: How to handle encoding errors.
+        session_kwargs: Additional keyword arguments to pass to the ClientSession.
+
+    Yields:
+        An initialized ClientSession.
+    """
+    # NOTE: execution commands (e.g., `uvx` / `npx`) require PATH envvar to be set.
+    # To address this, we automatically inject existing PATH envvar into the `env`,
+    # if it's not already set.
+    env = env or {}
+    if "PATH" not in env:
+        env["PATH"] = os.environ.get("PATH", "")
+
+    server_params = StdioServerParameters(
+        command=command,
+        args=args,
+        env=env,
+        cwd=cwd,
+        encoding=encoding,
+        encoding_error_handler=encoding_error_handler,
+    )
+
+    # Create and store the connection
+    async with (
+        stdio_client(server_params) as (read, write),
+        ClientSession(read, write, **(session_kwargs or {})) as session,
+    ):
+        yield session
+
+
+@asynccontextmanager
+async def _create_sse_session(  # noqa: PLR0913
+    *,
+    url: str,
+    headers: dict[str, Any] | None = None,
+    timeout: float = DEFAULT_HTTP_TIMEOUT,
+    sse_read_timeout: float = DEFAULT_SSE_READ_TIMEOUT,
+    session_kwargs: dict[str, Any] | None = None,
+    httpx_client_factory: McpHttpClientFactory | None = None,
+    auth: httpx.Auth | None = None,
+) -> AsyncIterator[ClientSession]:
+    """Create a new session to an MCP server using SSE.
+
+    Args:
+        url: URL of the SSE server.
+        headers: HTTP headers to send to the SSE endpoint.
+        timeout: HTTP timeout.
+        sse_read_timeout: SSE read timeout.
+        session_kwargs: Additional keyword arguments to pass to the ClientSession.
+        httpx_client_factory: Custom factory for httpx.AsyncClient (optional).
+        auth: Authentication for the HTTP client.
+
+    Yields:
+        An initialized ClientSession.
+    """
+    # Create and store the connection
+    kwargs = {}
+    if httpx_client_factory is not None:
+        kwargs["httpx_client_factory"] = httpx_client_factory
+
+    async with (
+        sse_client(url, headers, timeout, sse_read_timeout, auth=auth, **kwargs) as (
+            read,
+            write,
+        ),
+        ClientSession(read, write, **(session_kwargs or {})) as session,
+    ):
+        yield session
+
+
+@asynccontextmanager
+async def _create_streamable_http_session(  # noqa: PLR0913
+    *,
+    url: str,
+    headers: dict[str, Any] | None = None,
+    timeout: timedelta = DEFAULT_STREAMABLE_HTTP_TIMEOUT,
+    sse_read_timeout: timedelta = DEFAULT_STREAMABLE_HTTP_SSE_READ_TIMEOUT,
+    terminate_on_close: bool = True,
+    session_kwargs: dict[str, Any] | None = None,
+    httpx_client_factory: McpHttpClientFactory | None = None,
+    auth: httpx.Auth | None = None,
+) -> AsyncIterator[ClientSession]:
+    """Create a new session to an MCP server using Streamable HTTP.
+
+    Args:
+        url: URL of the endpoint to connect to.
+        headers: HTTP headers to send to the endpoint.
+        timeout: HTTP timeout.
+        sse_read_timeout: How long the client will wait for a new event before
+            disconnecting.
+        terminate_on_close: Whether to terminate the session on close.
+        session_kwargs: Additional keyword arguments to pass to the ClientSession.
+        httpx_client_factory: Custom factory for httpx.AsyncClient (optional).
+        auth: Authentication for the HTTP client.
+
+    Yields:
+        An initialized ClientSession.
+    """
+    # Create and store the connection
+    kwargs = {}
+    if httpx_client_factory is not None:
+        kwargs["httpx_client_factory"] = httpx_client_factory
+
+    async with (
+        streamablehttp_client(
+            url,
+            headers,
+            timeout,
+            sse_read_timeout,
+            terminate_on_close,
+            auth=auth,
+            **kwargs,
+        ) as (read, write, _),
+        ClientSession(read, write, **(session_kwargs or {})) as session,
+    ):
+        yield session
+
+
+@asynccontextmanager
+async def _create_websocket_session(
+    *,
+    url: str,
+    session_kwargs: dict[str, Any] | None = None,
+) -> AsyncIterator[ClientSession]:
+    """Create a new session to an MCP server using Websockets.
+
+    Args:
+        url: URL of the Websocket endpoint.
+        session_kwargs: Additional keyword arguments to pass to the ClientSession.
+
+    Yields:
+        An initialized ClientSession.
+
+    Raises:
+        ImportError: If websockets package is not installed.
+    """
+    try:
+        from mcp.client.websocket import websocket_client
+    except ImportError:
+        msg = (
+            "Could not import websocket_client. "
+            "To use Websocket connections, please install the required dependency: "
+            "'pip install mcp[ws]' or 'pip install websockets'"
+        )
+        raise ImportError(msg) from None
+
+    async with (
+        websocket_client(url) as (read, write),
+        ClientSession(read, write, **(session_kwargs or {})) as session,
+    ):
+        yield session
+
+
+@asynccontextmanager
+async def create_session(connection: Connection) -> AsyncIterator[ClientSession]:  # noqa: C901
+    """Create a new session to an MCP server.
+
+    Args:
+        connection: Connection config to use to connect to the server
+
+    Raises:
+        ValueError: If transport is not recognized
+        ValueError: If required parameters for the specified transport are missing
+
+    Yields:
+        A ClientSession
+    """
+    if "transport" not in connection:
+        msg = (
+            "Configuration error: Missing 'transport' key in server configuration. "
+            "Each server must include 'transport' with one of: "
+            "'stdio', 'sse', 'websocket', 'streamable_http'. "
+            "Please refer to the langchain-mcp-adapters documentation for more details."
+        )
+        raise ValueError(msg)
+
+    transport = connection["transport"]
+    params = {k: v for k, v in connection.items() if k != "transport"}
+
+    if transport == "sse":
+        if "url" not in params:
+            msg = "'url' parameter is required for SSE connection"
+            raise ValueError(msg)
+        async with _create_sse_session(**params) as session:
+            yield session
+    elif transport == "streamable_http":
+        if "url" not in params:
+            msg = "'url' parameter is required for Streamable HTTP connection"
+            raise ValueError(msg)
+        async with _create_streamable_http_session(**params) as session:
+            yield session
+    elif transport == "stdio":
+        if "command" not in params:
+            msg = "'command' parameter is required for stdio connection"
+            raise ValueError(msg)
+        if "args" not in params:
+            msg = "'args' parameter is required for stdio connection"
+            raise ValueError(msg)
+        async with _create_stdio_session(**params) as session:
+            yield session
+    elif transport == "websocket":
+        if "url" not in params:
+            msg = "'url' parameter is required for Websocket connection"
+            raise ValueError(msg)
+        async with _create_websocket_session(**params) as session:
+            yield session
+    else:
+        msg = (
+            f"Unsupported transport: {transport}. "
+            f"Must be one of: 'stdio', 'sse', 'websocket', 'streamable_http'"
+        )
+        raise ValueError(msg)
+
+================
+File: langchain_mcp_adapters/tools.py
+================
+"""Tools adapter for converting MCP tools to LangChain tools.
+
+This module provides functionality to convert MCP tools into LangChain-compatible
+tools, handle tool execution, and manage tool conversion between the two formats.
+"""
+
+from typing import Any, cast, get_args
+
+from langchain_core.tools import (
+    BaseTool,
+    InjectedToolArg,
+    StructuredTool,
+    ToolException,
+)
+from langchain_core.tools.base import get_all_basemodel_annotations
+from mcp import ClientSession
+from mcp.server.fastmcp.tools import Tool as FastMCPTool
+from mcp.server.fastmcp.utilities.func_metadata import ArgModelBase, FuncMetadata
+from mcp.types import CallToolResult, EmbeddedResource, ImageContent, TextContent
+from mcp.types import Tool as MCPTool
+from pydantic import BaseModel, create_model
+
+from langchain_mcp_adapters.sessions import Connection, create_session
+
+NonTextContent = ImageContent | EmbeddedResource
+MAX_ITERATIONS = 1000
+
+
+def _convert_call_tool_result(
+    call_tool_result: CallToolResult,
+) -> tuple[str | list[str], list[NonTextContent] | None]:
+    """Convert MCP CallToolResult to LangChain tool result format.
+
+    Args:
+        call_tool_result: The result from calling an MCP tool.
+
+    Returns:
+        A tuple containing the text content and any non-text content.
+
+    Raises:
+        ToolException: If the tool call resulted in an error.
+    """
+    text_contents: list[TextContent] = []
+    non_text_contents = []
+    for content in call_tool_result.content:
+        if isinstance(content, TextContent):
+            text_contents.append(content)
+        else:
+            non_text_contents.append(content)
+
+    tool_content: str | list[str] = [content.text for content in text_contents]
+    if not text_contents:
+        tool_content = ""
+    elif len(text_contents) == 1:
+        tool_content = tool_content[0]
+
+    if call_tool_result.isError:
+        raise ToolException(tool_content)
+
+    return tool_content, non_text_contents or None
+
+
+async def _list_all_tools(session: ClientSession) -> list[MCPTool]:
+    """List all available tools from an MCP session with pagination support.
+
+    Args:
+        session: The MCP client session.
+
+    Returns:
+        A list of all available MCP tools.
+
+    Raises:
+        RuntimeError: If maximum iterations exceeded while listing tools.
+    """
+    current_cursor: str | None = None
+    all_tools: list[MCPTool] = []
+
+    iterations = 0
+
+    while True:
+        iterations += 1
+        if iterations > MAX_ITERATIONS:
+            msg = "Reached max of 1000 iterations while listing tools."
+            raise RuntimeError(msg)
+
+        list_tools_page_result = await session.list_tools(cursor=current_cursor)
+
+        if list_tools_page_result.tools:
+            all_tools.extend(list_tools_page_result.tools)
+
+        # Pagination spec: https://modelcontextprotocol.io/specification/2025-06-18/server/utilities/pagination
+        # compatible with None or ""
+        if not list_tools_page_result.nextCursor:
+            break
+
+        current_cursor = list_tools_page_result.nextCursor
+    return all_tools
+
+
+def convert_mcp_tool_to_langchain_tool(
+    session: ClientSession | None,
+    tool: MCPTool,
+    *,
+    connection: Connection | None = None,
+) -> BaseTool:
+    """Convert an MCP tool to a LangChain tool.
+
+    NOTE: this tool can be executed only in a context of an active MCP client session.
+
+    Args:
+        session: MCP client session
+        tool: MCP tool to convert
+        connection: Optional connection config to use to create a new session
+                    if a `session` is not provided
+
+    Returns:
+        a LangChain tool
+
+    """
+    if session is None and connection is None:
+        msg = "Either a session or a connection config must be provided"
+        raise ValueError(msg)
+
+    async def call_tool(
+        **arguments: dict[str, Any],
+    ) -> tuple[str | list[str], list[NonTextContent] | None]:
+        if session is None:
+            # If a session is not provided, we will create one on the fly
+            async with create_session(connection) as tool_session:
+                await tool_session.initialize()
+                call_tool_result = await cast("ClientSession", tool_session).call_tool(
+                    tool.name,
+                    arguments,
+                )
+        else:
+            call_tool_result = await session.call_tool(tool.name, arguments)
+        return _convert_call_tool_result(call_tool_result)
+
+    return StructuredTool(
+        name=tool.name,
+        description=tool.description or "",
+        args_schema=tool.inputSchema,
+        coroutine=call_tool,
+        response_format="content_and_artifact",
+        metadata=tool.annotations.model_dump() if tool.annotations else None,
+    )
+
+
+async def load_mcp_tools(
+    session: ClientSession | None,
+    *,
+    connection: Connection | None = None,
+) -> list[BaseTool]:
+    """Load all available MCP tools and convert them to LangChain tools.
+
+    Args:
+        session: The MCP client session. If None, connection must be provided.
+        connection: Connection config to create a new session if session is None.
+
+    Returns:
+        List of LangChain tools. Tool annotations are returned as part
+        of the tool metadata object.
+
+    Raises:
+        ValueError: If neither session nor connection is provided.
+    """
+    if session is None and connection is None:
+        msg = "Either a session or a connection config must be provided"
+        raise ValueError(msg)
+
+    if session is None:
+        # If a session is not provided, we will create one on the fly
+        async with create_session(connection) as tool_session:
+            await tool_session.initialize()
+            tools = await _list_all_tools(tool_session)
+    else:
+        tools = await _list_all_tools(session)
+
+    return [
+        convert_mcp_tool_to_langchain_tool(session, tool, connection=connection)
+        for tool in tools
+    ]
+
+
+def _get_injected_args(tool: BaseTool) -> list[str]:
+    """Get the list of injected argument names from a LangChain tool.
+
+    Args:
+        tool: The LangChain tool to inspect.
+
+    Returns:
+        A list of injected argument names.
+    """
+
+    def _is_injected_arg_type(type_: type) -> bool:
+        return any(
+            isinstance(arg, InjectedToolArg)
+            or (isinstance(arg, type) and issubclass(arg, InjectedToolArg))
+            for arg in get_args(type_)[1:]
+        )
+
+    return [
+        field
+        for field, field_info in get_all_basemodel_annotations(tool.args_schema).items()
+        if _is_injected_arg_type(field_info)
+    ]
+
+
+def to_fastmcp(tool: BaseTool) -> FastMCPTool:
+    """Convert a LangChain tool to a FastMCP tool.
+
+    Args:
+        tool: The LangChain tool to convert.
+
+    Returns:
+        A FastMCP tool equivalent of the LangChain tool.
+
+    Raises:
+        TypeError: If the tool's args_schema is not a BaseModel subclass.
+        NotImplementedError: If the tool has injected arguments.
+    """
+    if not issubclass(tool.args_schema, BaseModel):
+        msg = (
+            "Tool args_schema must be a subclass of pydantic.BaseModel. "
+            "Tools with dict args schema are not supported."
+        )
+        raise TypeError(msg)
+
+    parameters = tool.tool_call_schema.model_json_schema()
+    field_definitions = {
+        field: (field_info.annotation, field_info)
+        for field, field_info in tool.tool_call_schema.model_fields.items()
+    }
+    arg_model = create_model(
+        f"{tool.name}Arguments", **field_definitions, __base__=ArgModelBase
+    )
+    fn_metadata = FuncMetadata(arg_model=arg_model)
+
+    # We'll use an Any type for the function return type.
+    # We're providing the parameters separately
+    async def fn(**arguments: dict[str, Any]) -> Any:  # noqa: ANN401
+        return await tool.ainvoke(arguments)
+
+    injected_args = _get_injected_args(tool)
+    if len(injected_args) > 0:
+        msg = "LangChain tools with injected arguments are not supported"
+        raise NotImplementedError(msg)
+
+    return FastMCPTool(
+        fn=fn,
+        name=tool.name,
+        description=tool.description,
+        parameters=parameters,
+        fn_metadata=fn_metadata,
+        is_async=True,
+    )
+
+================
+File: README.md
+================
+# LangChain MCP Adapters
+
+This library provides a lightweight wrapper that makes [Anthropic Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction) tools compatible with [LangChain](https://github.com/langchain-ai/langchain) and [LangGraph](https://github.com/langchain-ai/langgraph).
+
+![MCP](static/img/mcp.png)
+
+## Features
+
+- 🛠️ Convert MCP tools into [LangChain tools](https://python.langchain.com/docs/concepts/tools/) that can be used with [LangGraph](https://github.com/langchain-ai/langgraph) agents
+- 📦 A client implementation that allows you to connect to multiple MCP servers and load tools from them
+
+## Installation
+
+```bash
+pip install langchain-mcp-adapters
+```
+
+## Quickstart
+
+Here is a simple example of using the MCP tools with a LangGraph agent.
+
+```bash
+pip install langchain-mcp-adapters langgraph "langchain[openai]"
+
+export OPENAI_API_KEY=<your_api_key>
+```
+
+### Server
+
+First, let's create an MCP server that can add and multiply numbers.
+
+```python
+# math_server.py
+from mcp.server.fastmcp import FastMCP
+
+mcp = FastMCP("Math")
+
+@mcp.tool()
+def add(a: int, b: int) -> int:
+    """Add two numbers"""
+    return a + b
+
+@mcp.tool()
+def multiply(a: int, b: int) -> int:
+    """Multiply two numbers"""
+    return a * b
+
+if __name__ == "__main__":
+    mcp.run(transport="stdio")
+```
+
+### Client
+
+```python
+# Create server parameters for stdio connection
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
+
+from langchain_mcp_adapters.tools import load_mcp_tools
+from langgraph.prebuilt import create_react_agent
+
+server_params = StdioServerParameters(
+    command="python",
+    # Make sure to update to the full absolute path to your math_server.py file
+    args=["/path/to/math_server.py"],
+)
+
+async with stdio_client(server_params) as (read, write):
+    async with ClientSession(read, write) as session:
+        # Initialize the connection
+        await session.initialize()
+
+        # Get tools
+        tools = await load_mcp_tools(session)
+
+        # Create and run the agent
+        agent = create_react_agent("openai:gpt-4.1", tools)
+        agent_response = await agent.ainvoke({"messages": "what's (3 + 5) x 12?"})
+```
+
+## Multiple MCP Servers
+
+The library also allows you to connect to multiple MCP servers and load tools from them:
+
+### Server
+
+```python
+# math_server.py
+...
+
+# weather_server.py
+from typing import List
+from mcp.server.fastmcp import FastMCP
+
+mcp = FastMCP("Weather")
+
+@mcp.tool()
+async def get_weather(location: str) -> str:
+    """Get weather for location."""
+    return "It's always sunny in New York"
+
+if __name__ == "__main__":
+    mcp.run(transport="streamable-http")
+```
+
+```bash
+python weather_server.py
+```
+
+### Client
+
+```python
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langgraph.prebuilt import create_react_agent
+
+client = MultiServerMCPClient(
+    {
+        "math": {
+            "command": "python",
+            # Make sure to update to the full absolute path to your math_server.py file
+            "args": ["/path/to/math_server.py"],
+            "transport": "stdio",
+        },
+        "weather": {
+            # Make sure you start your weather server on port 8000
+            "url": "http://localhost:8000/mcp/",
+            "transport": "streamable_http",
+        }
+    }
+)
+tools = await client.get_tools()
+agent = create_react_agent("openai:gpt-4.1", tools)
+math_response = await agent.ainvoke({"messages": "what's (3 + 5) x 12?"})
+weather_response = await agent.ainvoke({"messages": "what is the weather in nyc?"})
+```
+
+> [!note]
+> Example above will start a new MCP `ClientSession` for each tool invocation. If you would like to explicitly start a session for a given server, you can do:
+>
+>    ```python
+>    from langchain_mcp_adapters.tools import load_mcp_tools
+>
+>    client = MultiServerMCPClient({...})
+>    async with client.session("math") as session:
+>        tools = await load_mcp_tools(session)
+>    ```
+
+## Streamable HTTP
+
+MCP now supports [streamable HTTP](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#streamable-http) transport.
+
+To start an [example](examples/servers/streamable-http-stateless/) streamable HTTP server, run the following:
+
+```bash
+cd examples/servers/streamable-http-stateless/
+uv run mcp-simple-streamablehttp-stateless --port 3000
+```
+
+Alternatively, you can use FastMCP directly (as in the examples above).
+
+To use it with Python MCP SDK `streamablehttp_client`:
+
+```python
+# Use server from examples/servers/streamable-http-stateless/
+
+from mcp import ClientSession
+from mcp.client.streamable_http import streamablehttp_client
+
+from langgraph.prebuilt import create_react_agent
+from langchain_mcp_adapters.tools import load_mcp_tools
+
+async with streamablehttp_client("http://localhost:3000/mcp/") as (read, write, _):
+    async with ClientSession(read, write) as session:
+        # Initialize the connection
+        await session.initialize()
+
+        # Get tools
+        tools = await load_mcp_tools(session)
+        agent = create_react_agent("openai:gpt-4.1", tools)
+        math_response = await agent.ainvoke({"messages": "what's (3 + 5) x 12?"})
+```
+
+Use it with `MultiServerMCPClient`:
+
+```python
+# Use server from examples/servers/streamable-http-stateless/
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langgraph.prebuilt import create_react_agent
+
+client = MultiServerMCPClient(
+    {
+        "math": {
+            "transport": "streamable_http",
+            "url": "http://localhost:3000/mcp/"
+        },
+    }
+)
+tools = await client.get_tools()
+agent = create_react_agent("openai:gpt-4.1", tools)
+math_response = await agent.ainvoke({"messages": "what's (3 + 5) x 12?"})
+```
+
+## Passing runtime headers
+
+When connecting to MCP servers, you can include custom headers (e.g., for authentication or tracing) using the `headers` field in the connection configuration. This is supported for the following transports:
+
+* `sse`
+* `streamable_http`
+
+### Example: passing headers with `MultiServerMCPClient`
+
+```python
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langgraph.prebuilt import create_react_agent
+
+client = MultiServerMCPClient(
+    {
+        "weather": {
+            "transport": "streamable_http",
+            "url": "http://localhost:8000/mcp",
+            "headers": {
+                "Authorization": "Bearer YOUR_TOKEN",
+                "X-Custom-Header": "custom-value"
+            },
+        }
+    }
+)
+tools = await client.get_tools()
+agent = create_react_agent("openai:gpt-4.1", tools)
+response = await agent.ainvoke({"messages": "what is the weather in nyc?"})
+```
+
+> Only `sse` and `streamable_http` transports support runtime headers. These headers are passed with every HTTP request to the MCP server.
+
+
+## Using with LangGraph StateGraph
+
+```python
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langgraph.graph import StateGraph, MessagesState, START
+from langgraph.prebuilt import ToolNode, tools_condition
+
+from langchain.chat_models import init_chat_model
+model = init_chat_model("openai:gpt-4.1")
+
+client = MultiServerMCPClient(
+    {
+        "math": {
+            "command": "python",
+            # Make sure to update to the full absolute path to your math_server.py file
+            "args": ["./examples/math_server.py"],
+            "transport": "stdio",
+        },
+        "weather": {
+            # make sure you start your weather server on port 8000
+            "url": "http://localhost:8000/mcp/",
+            "transport": "streamable_http",
+        }
+    }
+)
+tools = await client.get_tools()
+
+def call_model(state: MessagesState):
+    response = model.bind_tools(tools).invoke(state["messages"])
+    return {"messages": response}
+
+builder = StateGraph(MessagesState)
+builder.add_node(call_model)
+builder.add_node(ToolNode(tools))
+builder.add_edge(START, "call_model")
+builder.add_conditional_edges(
+    "call_model",
+    tools_condition,
+)
+builder.add_edge("tools", "call_model")
+graph = builder.compile()
+math_response = await graph.ainvoke({"messages": "what's (3 + 5) x 12?"})
+weather_response = await graph.ainvoke({"messages": "what is the weather in nyc?"})
+```
+
+## Using with LangGraph API Server
+
+> [!TIP]
+> Check out [this guide](https://langchain-ai.github.io/langgraph/tutorials/langgraph-platform/local-server/) on getting started with LangGraph API server.
+
+If you want to run a LangGraph agent that uses MCP tools in a LangGraph API server, you can use the following setup:
+
+```python
+# graph.py
+from contextlib import asynccontextmanager
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langgraph.prebuilt import create_react_agent
+
+async def make_graph():
+    client = MultiServerMCPClient(
+        {
+            "math": {
+                "command": "python",
+                # Make sure to update to the full absolute path to your math_server.py file
+                "args": ["/path/to/math_server.py"],
+                "transport": "stdio",
+            },
+            "weather": {
+                # make sure you start your weather server on port 8000
+                "url": "http://localhost:8000/mcp/",
+                "transport": "streamable_http",
+            }
+        }
+    )
+    tools = await client.get_tools()
+    agent = create_react_agent("openai:gpt-4.1", tools)
+    return agent
+```
+
+In your [`langgraph.json`](https://langchain-ai.github.io/langgraph/cloud/reference/cli/#configuration-file) make sure to specify `make_graph` as your graph entrypoint:
+
+```json
+{
+  "dependencies": ["."],
+  "graphs": {
+    "agent": "./graph.py:make_graph"
+  }
+}
+```
+
+## Add LangChain tools to a FastMCP server
+
+Use `to_fastmcp` to convert LangChain tools to FastMCP, and then add them to the `FastMCP` server via the initializer:
+
+> [!NOTE]
+> `tools` argument is only available in FastMCP as of `mcp >= 1.9.1`
+
+```python
+from langchain_core.tools import tool
+from langchain_mcp_adapters.tools import to_fastmcp
+from mcp.server.fastmcp import FastMCP
+
+
+@tool
+def add(a: int, b: int) -> int:
+    """Add two numbers"""
+    return a + b
+
+
+fastmcp_tool = to_fastmcp(add)
+
+mcp = FastMCP("Math", tools=[fastmcp_tool])
+mcp.run(transport="stdio")
+```
+
+
+
+
+================================================================
+End of Codebase
+================================================================
