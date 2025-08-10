@@ -36,7 +36,7 @@ from .deep_research_agent import (
     write_research_brief,
     final_report_generation,
 )
-from .supervisor_graph import build_supervisor_subgraph
+from .supervisor_a2a_graph import build_supervisor_a2a_graph
 from .shared import override_reducer  # noqa: F401
 
 
@@ -161,7 +161,7 @@ async def revise_final_report(state: HITLAgentState, config: RunnableConfig):
 # 그래프 구성: 기존 파이프라인 + HITL 루프
 _builder = StateGraph(state_schema=HITLAgentState, config_schema=ResearchConfig)
 _builder.add_node("write_research_brief", write_research_brief)
-_builder.add_node("research_supervisor", build_supervisor_subgraph())
+_builder.add_node("research_supervisor", build_supervisor_a2a_graph())
 _builder.add_node("final_report_generation", final_report_generation)
 _builder.add_node("hitl_final_approval", hitl_final_approval)
 _builder.add_node("revise_final_report", revise_final_report)

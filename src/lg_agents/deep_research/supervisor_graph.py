@@ -164,11 +164,18 @@ def build_supervisor_subgraph():
                 },
             )
         except Exception as e:
-            logger.error(f"Supervisor tools error: {e}")
+            # 일부 런타임에서 tool_calls 구조가 가변적(dict/객체 혼재)이라 KeyError/AttributeError가 발생할 수 있음
+            # 사용자 경험을 해치지 않도록 에러 대신 경고로 기록하고, 현재까지 수집된 노트를 반환하며 안전 종료한다
+            logger.warning(f"Supervisor tool handling fallback: {e}")
+            safe_notes = []
+            try:
+                safe_notes = get_notes_from_tool_calls(supervisor_messages)
+            except Exception:
+                safe_notes = []
             return Command(
                 goto=END,
                 update={
-                    "notes": get_notes_from_tool_calls(supervisor_messages),
+                    "notes": safe_notes,
                     "research_brief": state.get("research_brief", ""),
                 },
             )

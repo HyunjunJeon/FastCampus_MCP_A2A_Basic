@@ -194,7 +194,29 @@ class HITLManager:
             
             # Deep Research 완료 대기
             research_result = await research_task
-            
+
+            # 결과 파일 저장 (reports/)
+            saved_path = None
+            try:
+                import os
+                os.makedirs("reports", exist_ok=True)
+                from datetime import datetime as _dt
+                ts = _dt.utcnow().strftime("%Y%m%d_%H%M%S")
+                filename = f"final_report_{request.request_id}_{ts}.md"
+                header = (
+                    f"# 최종 보고서\n\n"
+                    f"요청 ID: {request.request_id}\n"
+                    f"제목: {request.title}\n"
+                    f"시작: {started_at.isoformat()}Z\n"
+                    f"완료: {_dt.utcnow().isoformat()}Z\n\n---\n\n"
+                )
+                final_report_text = research_result.get("final_report", "")
+                with open(os.path.join("reports", filename), "w", encoding="utf-8") as f:
+                    f.write(header + final_report_text)
+                saved_path = os.path.join("reports", filename)
+            except Exception as e:
+                logger.error(f"최종 보고서 파일 저장 실패: {e}")
+
             # 완료 브로드캐스트
             completion_data = {
                 "request_id": request.request_id,
@@ -204,7 +226,9 @@ class HITLManager:
                 "started_at": started_at,
                 "completed_at": datetime.utcnow(),
                 "final_status": "완료",
-                "summary": research_result.get("summary", "Deep Research가 성공적으로 완료되었습니다.")
+                "summary": research_result.get("summary", "Deep Research가 성공적으로 완료되었습니다."),
+                "final_report": research_result.get("final_report", ""),
+                "saved_path": saved_path,
             }
             
             if connection_manager:

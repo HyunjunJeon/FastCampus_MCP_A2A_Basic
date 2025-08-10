@@ -10,6 +10,11 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
+    <!-- Markdown 렌더링 및 Sanitize -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css@5.2.0/github-markdown.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.2/dist/purify.min.js"></script>
+    
     <!-- CopilotKit CDN (시뮬레이션을 위한 기본 구현) -->
     <style>
         * {
@@ -220,20 +225,6 @@
             transform: translateY(-1px);
         }
         
-        .copilot-chat {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            width: 350px;
-            height: 500px;
-            background: white;
-            border-radius: 16px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
-            display: none;
-            flex-direction: column;
-            overflow: hidden;
-        }
-        
         .copilot-header {
             background: #667eea;
             color: white;
@@ -260,23 +251,7 @@
             outline: none;
         }
         
-        .chat-toggle {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            width: 60px;
-            height: 60px;
-            background: #667eea;
-            color: white;
-            border: none;
-            border-radius: 50%;
-            cursor: pointer;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.5rem;
-        }
+        /* 채팅 토글 제거 */
         
         .loading {
             display: flex;
@@ -721,29 +696,7 @@
     <script type="text/babel">
         const { useState, useEffect, useCallback } = React;
         
-        // A2A 프로토콜 시뮬레이션을 위한 기본 훅
-        const useA2AConnection = () => {
-            const [connected, setConnected] = useState(false);
-            const [messages, setMessages] = useState([]);
-            
-            useEffect(() => {
-                // A2A 연결 시뮬레이션
-                setTimeout(() => setConnected(true), 1000);
-            }, []);
-            
-            const sendMessage = useCallback((message) => {
-                setMessages(prev => [...prev, { type: 'outgoing', content: message }]);
-                // A2A 에이전트로 메시지 전송 시뮬레이션
-                setTimeout(() => {
-                    setMessages(prev => [...prev, { 
-                        type: 'incoming', 
-                        content: `A2A 응답: ${message}에 대한 처리를 시작합니다.` 
-                    }]);
-                }, 1000);
-            }, []);
-            
-            return { connected, messages, sendMessage };
-        };
+        // 채팅 기능 제거
         
         // 필터링 및 정렬 유틸리티 함수들
         const applyFiltersAndSorting = (data, filters) => {
@@ -1150,15 +1103,15 @@
                                     const resp = await fetch(`/api/approvals/${approval.request_id}/final-report`);
                                     if (resp.ok) {
                                         const data = await resp.json();
-                                        const win = window.open('', '_blank', 'width=900,height=700');
+                                        const win = window.open('', '_blank', 'width=950,height=800');
                                         if (win) {
-                                            win.document.write(`<!DOCTYPE html><html><head><meta charset='utf-8'><title>최종 보고서 - ${approval.request_id}</title></head><body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; line-height: 1.6; white-space: pre-wrap;">`);
+                                            const safeHtml = DOMPurify.sanitize(marked.parse(data.final_report || ''));
+                                            win.document.write(`<!DOCTYPE html><html><head><meta charset='utf-8'><title>최종 보고서 - ${approval.request_id}</title><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css@5.2.0/github-markdown.min.css"></head><body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; line-height: 1.6; background:#f6f8fa;">`);
+                                            win.document.write(`<article class="markdown-body" style="max-width: 900px; margin: 0 auto; background: white; padding: 24px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.06);">`);
                                             win.document.write(`<h2>📋 최종 보고서</h2>`);
-                                            win.document.write(`<p><strong>요청 ID:</strong> ${approval.request_id}</p>`);
-                                            win.document.write(`<p><strong>제목:</strong> ${approval.title}</p>`);
-                                            win.document.write(`<hr/>`);
-                                            win.document.write(`<div>${data.final_report.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`);
-                                            win.document.write(`</body></html>`);
+                                            win.document.write(`<p><strong>요청 ID:</strong> ${approval.request_id}<br/><strong>제목:</strong> ${approval.title}</p><hr/>`);
+                                            win.document.write(`<div>${safeHtml}</div>`);
+                                            win.document.write(`</article></body></html>`);
                                             win.document.close();
                                         }
                                     } else {
@@ -1180,15 +1133,15 @@
                                     const resp = await fetch(`/api/approvals/${approval.request_id}/final-report`);
                                     if (resp.ok) {
                                         const data = await resp.json();
-                                        const win = window.open('', '_blank', 'width=900,height=700');
+                                        const win = window.open('', '_blank', 'width=950,height=800');
                                         if (win) {
-                                            win.document.write(`<!DOCTYPE html><html><head><meta charset='utf-8'><title>최종 보고서 - ${approval.request_id}</title></head><body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; line-height: 1.6; white-space: pre-wrap;">`);
+                                            const safeHtml = DOMPurify.sanitize(marked.parse(data.final_report || ''));
+                                            win.document.write(`<!DOCTYPE html><html><head><meta charset='utf-8'><title>최종 보고서 - ${approval.request_id}</title><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css@5.2.0/github-markdown.min.css"></head><body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; line-height: 1.6; background:#f6f8fa;">`);
+                                            win.document.write(`<article class="markdown-body" style="max-width: 900px; margin: 0 auto; background: white; padding: 24px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.06);">`);
                                             win.document.write(`<h2>📋 최종 보고서</h2>`);
-                                            win.document.write(`<p><strong>요청 ID:</strong> ${approval.request_id}</p>`);
-                                            win.document.write(`<p><strong>제목:</strong> ${approval.title}</p>`);
-                                            win.document.write(`<hr/>`);
-                                            win.document.write(`<div>${data.final_report.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`);
-                                            win.document.write(`</body></html>`);
+                                            win.document.write(`<p><strong>요청 ID:</strong> ${approval.request_id}<br/><strong>제목:</strong> ${approval.title}</p><hr/>`);
+                                            win.document.write(`<div>${safeHtml}</div>`);
+                                            win.document.write(`</article></body></html>`);
                                             win.document.close();
                                         }
                                     } else {
@@ -1331,6 +1284,38 @@
                                 opacity: '0.8' 
                             }}>
                                 소요시간: {status.details.total_duration}
+                            </div>
+                        )}
+                        {status.details?.saved_path && (
+                            <div style={{ 
+                                marginTop: '10px', 
+                                fontSize: '0.9rem', 
+                                opacity: '0.8' 
+                            }}>
+                                저장 파일: {status.details.saved_path}
+                            </div>
+                        )}
+                        {status.details?.final_report && (
+                            <div style={{ 
+                                marginTop: '12px', 
+                                background: 'rgba(255,255,255,0.9)',
+                                color: '#1f2937',
+                                borderRadius: '8px',
+                                padding: '12px',
+                                whiteSpace: 'pre-wrap'
+                            }}>
+                                {status.details.final_report.length > 1200 ? (
+                                    <>
+                                        {status.details.final_report.slice(0, 1200)}...
+                                        <div style={{marginTop: '8px'}}>
+                                            <a href={`/api/approvals/${status.details.request_id}/final-report/download?format=md`} target="_blank" rel="noopener noreferrer">
+                                                전체 보고서 다운로드 (MD)
+                                            </a>
+                                        </div>
+                                    </>
+                                ) : (
+                                    status.details.final_report
+                                )}
                             </div>
                         )}
                     </div>
@@ -1733,33 +1718,37 @@
         
         // 연구 시작 모달 컴포넌트
         const StartResearchModal = ({ show, onClose, onSubmit }) => {
-            const [topic, setTopic] = useState('');
+            const topicRef = React.useRef(null);
+            const [canSubmit, setCanSubmit] = useState(false);
             const [isSubmitting, setIsSubmitting] = useState(false);
             
             const handleSubmit = async (e) => {
                 e.preventDefault();
                 
-                if (!topic.trim()) {
+                const value = topicRef.current ? topicRef.current.value : '';
+                if (!value.trim()) {
                     alert('연구 주제를 입력해주세요.');
                     return;
                 }
                 
-                if (topic.trim().length < 5) {
+                if (value.trim().length < 5) {
                     alert('연구 주제는 최소 5글자 이상 입력해주세요.');
                     return;
                 }
                 
                 setIsSubmitting(true);
                 try {
-                    await onSubmit(topic.trim());
+                    await onSubmit(value.trim());
                 } finally {
                     setIsSubmitting(false);
-                    setTopic('');
+                    if (topicRef.current) topicRef.current.value = '';
+                    setCanSubmit(false);
                 }
             };
             
             const handleClose = () => {
-                setTopic('');
+                if (topicRef.current) topicRef.current.value = '';
+                setCanSubmit(false);
                 onClose();
             };
             
@@ -1825,9 +1814,9 @@
                                 }}>
                                     연구 주제를 입력하세요
                                 </label>
-                                <textarea
-                                    value={topic}
-                                    onChange={(e) => setTopic(e.target.value)}
+                        <textarea
+                            ref={topicRef}
+                            onChange={(e) => setCanSubmit(Boolean(e.target.value && e.target.value.trim().length > 0))}
                                     placeholder="예: AI가 의료 진단에 미치는 영향 분석"
                                     style={{
                                         width: '100%',
@@ -1876,14 +1865,14 @@
                                 </button>
                                 <button
                                     type="submit"
-                                    disabled={isSubmitting || !topic.trim()}
+                                    disabled={isSubmitting || !canSubmit}
                                     style={{
                                         padding: '12px 20px',
                                         border: 'none',
-                                        background: isSubmitting || !topic.trim() ? '#cbd5e0' : '#667eea',
+                                        background: isSubmitting || !canSubmit ? '#cbd5e0' : '#667eea',
                                         color: 'white',
                                         borderRadius: '8px',
-                                        cursor: isSubmitting || !topic.trim() ? 'not-allowed' : 'pointer',
+                                        cursor: isSubmitting || !canSubmit ? 'not-allowed' : 'pointer',
                                         fontWeight: '600',
                                         display: 'flex',
                                         alignItems: 'center',
@@ -1899,62 +1888,12 @@
             );
         };
         
-        // A2A 채팅 컴포넌트 (CopilotKit 시뮬레이션)
-        const A2AChat = ({ show, onToggle }) => {
-            const { connected, messages, sendMessage } = useA2AConnection();
-            const [input, setInput] = useState('');
-            
-            const handleSend = () => {
-                if (input.trim()) {
-                    sendMessage(input);
-                    setInput('');
-                }
-            };
-            
-            return (
-                <>
-                    <button className="chat-toggle" onClick={onToggle}>
-                        💬
-                    </button>
-                    
-                    {show && (
-                        <div className="copilot-chat" style={{display: 'flex'}}>
-                            <div className="copilot-header">
-                                A2A Agent Chat {connected ? '🟢' : '🔴'}
-                            </div>
-                            <div className="copilot-messages">
-                                {messages.map((msg, idx) => (
-                                    <div key={idx} style={{
-                                        margin: '10px 0',
-                                        padding: '10px',
-                                        borderRadius: '8px',
-                                        background: msg.type === 'outgoing' ? '#667eea' : '#f7fafc',
-                                        color: msg.type === 'outgoing' ? 'white' : '#2d3748',
-                                        marginLeft: msg.type === 'outgoing' ? '20px' : '0',
-                                        marginRight: msg.type === 'incoming' ? '20px' : '0'
-                                    }}>
-                                        {msg.content}
-                                    </div>
-                                ))}
-                            </div>
-                            <div className="copilot-input">
-                                <input
-                                    value={input}
-                                    onChange={(e) => setInput(e.target.value)}
-                                    onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-                                    placeholder="A2A 에이전트와 대화..."
-                                />
-                            </div>
-                        </div>
-                    )}
-                </>
-            );
-        };
+        // 채팅 컴포넌트 제거
         
         // 메인 앱 컴포넌트
         const App = () => {
             const [initialLoading, setInitialLoading] = useState(true);
-            const [showChat, setShowChat] = useState(false);
+            // 채팅 상태 제거
             const [showStartResearchModal, setShowStartResearchModal] = useState(false);
             const [activeTab, setActiveTab] = useState('pending');
             const [a2aStatus, setA2aStatus] = useState(null);
@@ -2006,6 +1945,10 @@
                 if (tabId === 'approved' && getTotalCounts().approved === 0) {
                     fetchApprovedApprovals();
                 } else if (tabId === 'rejected' && getTotalCounts().rejected === 0) {
+                    fetchRejectedApprovals();
+                } else if (tabId === 'history') {
+                    // 전체이력에서는 승인/거부 데이터를 즉시 로드해 혼합 리스트가 비지 않도록 함
+                    fetchApprovedApprovals();
                     fetchRejectedApprovals();
                 }
             };
@@ -2237,10 +2180,7 @@
                         )}
                     </TabsContainer>
                     
-                    <A2AChat 
-                        show={showChat} 
-                        onToggle={() => setShowChat(!showChat)} 
-                    />
+                    {/* 채팅 UI 제거 */}
                     
                     <StartResearchModal
                         show={showStartResearchModal}
