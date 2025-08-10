@@ -1,6 +1,6 @@
 ## Code Index - lg_agents/deep_research
 
-심층 연구(Deep Research) 그래프 구성요소와 HITL 통합 노드.
+Deep Research 그래프 구성요소와 HITL 통합 노드.
 
 ### Files
 

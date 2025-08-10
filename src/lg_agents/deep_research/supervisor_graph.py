@@ -20,7 +20,6 @@ from src.config import ResearchConfig
 from src.utils.logging_config import get_logger
 from .shared import override_reducer, get_notes_from_tool_calls, ConductResearch, ResearchComplete
 from .researcher_graph import build_researcher_subgraph
- 
 
 
 logger = get_logger(__name__)
@@ -137,7 +136,9 @@ def build_supervisor_subgraph():
         research_iterations = state.get("research_iterations", 0)
 
         should_terminate, most_recent_message = _check_termination_conditions(
-            supervisor_messages, research_iterations, configurable
+            supervisor_messages, 
+            research_iterations, 
+            configurable,
         )
         if should_terminate:
             return Command(

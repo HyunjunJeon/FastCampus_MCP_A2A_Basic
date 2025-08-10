@@ -187,7 +187,6 @@ class MultiAgentSystemLauncher:
         - Planner: 연구 계획 수립 및 작업 분할
         - Researcher: 웹 검색 및 데이터 수집  
         - Writer: 보고서 작성 및 요약
-        - Evaluator: 결과 평가 및 품질 검증
 
         === 임베디드 서버 장점 ===
         1. Context Manager로 자동 생명주기 관리
@@ -280,7 +279,7 @@ class MultiAgentSystemLauncher:
         except Exception as e:
             safe_print(f"⚠️ ResearcherA2AGraph 시작 실패: {e}")
 
-        # Supervisor 단독 A2A 그래프 서버 (옵션)
+        # Supervisor 단독 A2A 그래프 서버
         try:
             s_port = 8090
             s_host = "0.0.0.0"
@@ -440,7 +439,7 @@ async def main():
         running_agents = []
         failed_agents = []
 
-        for name, server_ctx in embedded_agents:
+        for name, _ in embedded_agents:
             # 임베디드 서버는 Context Manager 진입 시 즉시 가용
             running_agents.append(name)
             safe_print(f"✅ {name} - 임베디드 서버 정상 실행 중")

@@ -6,7 +6,6 @@ MCP 도구를 활용해 정보 수집(ReAct)과 결과 압축을 수행하는 �
 
 from __future__ import annotations
 
-import asyncio
 from typing import Annotated
 import operator
 
@@ -116,7 +115,8 @@ async def researcher(state: ResearcherState, config: RunnableConfig):
         raise ValueError("연구를 수행할 도구가 없습니다. MCP 서버를 확인하세요.")
 
     researcher_system_prompt = research_system_prompt.format(
-        date=get_today_str(), mcp_prompt=_get_mcp_prompt_description(tools)
+        date=get_today_str(), 
+        mcp_prompt=_get_mcp_prompt_description(tools),
     )
 
     model = (
@@ -190,15 +190,23 @@ async def compress_research(state: ResearcherState, config: RunnableConfig):
     """연구 결과 압축"""
     configurable = ResearchConfig.from_runnable_config(config)
     synthesizer_model = init_chat_model(
-        model_provider="openai", model=configurable.compression_model, temperature=0
+        model_provider="openai", 
+        model=configurable.compression_model, 
+        temperature=0,
     )
 
     researcher_messages = state.get("researcher_messages", [])
-    compress_prompt = compress_research_system_prompt.format(date=get_today_str())
-    researcher_messages.append(HumanMessage(content=compress_research_simple_human_message))
+    compress_prompt = compress_research_system_prompt.format(
+        date=get_today_str(),
+    )
+    researcher_messages.append(
+        HumanMessage(content=compress_research_simple_human_message),
+    )
 
     try:
-        response = await synthesizer_model.ainvoke([SystemMessage(content=compress_prompt)] + researcher_messages)
+        response = await synthesizer_model.ainvoke(
+            [SystemMessage(content=compress_prompt)] + researcher_messages,
+        )
         return {
             "compressed_research": str(response.content),
             "raw_notes": [
@@ -218,7 +226,11 @@ async def compress_research(state: ResearcherState, config: RunnableConfig):
 
 def build_researcher_subgraph() -> StateGraph:
     """Researcher 서브그래프 생성 및 컴파일 반환"""
-    builder = StateGraph(state_schema=ResearcherState, output=ResearcherOutputState, config_schema=ResearchConfig)
+    builder = StateGraph(
+        state_schema=ResearcherState, 
+        output_schema=ResearcherOutputState, 
+        config_schema=ResearchConfig,
+    )
     builder.add_node("researcher", researcher)
     builder.add_node("researcher_tools", researcher_tools)
     builder.add_node("compress_research", compress_research)

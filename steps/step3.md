@@ -1,6 +1,6 @@
 # Step 3 — MCP만으로 멀티에이전트 구현 후 A2A로 한계 극복하기 (Project: Simple DeepResearch)
 
-이 단계는 Step 1~2의 기반 위에서 “MCP만으로 Deep Research 멀티에이전트”를 구축하고, 같은 기능을 A2A로 이전했을 때 상태(State) 복잡도와 확장성의 차이를 체감하도록 설계되었습니다. README의 대주제(“MCP → A2A → 멀티에이전트 → HITL”)를 유지하세요.
+이 단계는 Step 1~2의 기반 위에서 "MCP만으로 Deep Research 멀티에이전트"를 구축하고, 같은 기능을 A2A로 이전했을 때 상태(State) 복잡도와 확장성의 차이를 체감하도록 설계되었습니다. README의 대주제("MCP → A2A → 멀티에이전트 → HITL")를 유지하세요.
 
 ## 목표
 
@@ -8,13 +8,12 @@
 - 다음 역할로 구성된 멀티에이전트 파이프라인을 LangGraph 그래프(Supervisor + Sub-graphs)로 구현
   - Supervisor(작업 전달 Router)
   - Planner(연구 계획 수립)
-  - Researcher(도구로 자료 조사)
+  - Researcher(도구로 자료 조사) - MCP 서버
   - Writer(보고서 작성)
-  - Evaluator(보고서 평가)
 - “MCP Only” 버전의 복잡한 공유 State(깊은 서브그래프 구조) 경험
 - 동일 파이프라인을 Step 2의 A2A Wrapper로 옮겼을 때 “단일 Agent 레벨 상태관리”의 단순함/확장성 비교
 
-## 산출물(이 단계 완료 시)
+## 산출물
 
 - MCP-only DeepResearch 실행 예제: `examples/step3_multiagent_systems.py`
 - 비교 결과 JSON: `reports/comparison_results_YYYYMMDD_HHMMSS.json`
@@ -22,29 +21,22 @@
 
 ## 구축 순서(요약)
 
-### 1) MCP 서버 확장 및 Health Check
-
-- `docker/docker-compose.mcp.yml`로 arXiv(3000), Tavily(3001), Serper(3002) 가동
-- `./docker/mcp_docker.sh up && ./docker/mcp_docker.sh test`
-- 루트 `.env`에 필요한 API 키(SERPER_API_KEY, TAVILY_API_KEY 등) 설정
-
-### 2) MCP-only 멀티에이전트 그래프
+### 1) MCP-only 멀티에이전트 그래프
 
 - 각 역할(Planner/Researcher/Writer/Evaluator)을 `create_react_agent`로 구성
 - 도구 주입: `MultiServerMCPClient.get_tools()`로 MCP 도구 로딩 후 LLM에 bind
 - Supervisor가 라우팅하는 구조로 서브그래프 연결(Supervisor → Planner → Researcher → Writer → Evaluator)
 - 이때 Supervisor/Researcher의 메시지/노트/중간 산출물 공유 때문에 State 객체가 깊고 넓게 확장(복잡도 상승)
 
-### 3) 실행 및 레포트 저장
+### 2) 실행 및 레포트 저장
 
 - `python examples/step3_multiagent_systems.py`
 - 동일한 연구 주제로 MCP-only vs (Step2 임베디드) A2A 버전 실행
 - 실행 시간, 병렬성, 상태 깊이 지표 등을 JSON으로 저장
 
-### 4) A2A로 전환하여 단순화
+### 3) A2A로 전환하여 단순화
 
-- Step 2의 `to_a2a_starlette_server` + `LangGraphWrappedA2AExecutor`로 각 역할을 “독립 A2A Agent”로 노출하거나
-- 또는 “전체 DeepResearch 그래프”를 하나의 A2A Agent로 노출
+- Step 2의 `to_a2a_starlette_server` + `LangGraphWrappedA2AExecutor`로 각 역할을 “독립 A2A Agent”로 노출함.
 - 상태(State) 관점: A2A는 에이전트 단위 독립 상태 + 표준 메시징이므로, LangGraph 내부의 공유 State를 얕게 가져가거나 분리 가능
 
 ## 검증 기준

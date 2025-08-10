@@ -3,6 +3,7 @@ A2A Client Utilities - A2A 클라이언트 0.3.0 기준
 """
 
 from typing import Any
+import re
 
 import httpx
 from a2a.types import AgentCard, Message, Role, TransportProtocol
@@ -105,6 +106,8 @@ class A2AClientManager:
                 continue
             response_text = merge_incremental_text(response_text, text_content)
 
+        # 상태 업데이트 텍스트(진행 알림)가 결과 앞에 섞이지 않도록 정리
+        response_text = self._sanitize_agent_status_text(response_text)
         return response_text.strip()
 
     def _extract_text_from_event(self, event) -> str:
@@ -129,6 +132,29 @@ class A2AClientManager:
                     if hasattr(part, "root") and hasattr(part.root, "text"):
                         return part.root.text
         return ""
+
+    def _sanitize_agent_status_text(self, text: str) -> str:
+        """A2A 실행 상태 안내 문구를 최종 결과에서 제거합니다.
+
+        - 예: "A2A Agent 'CompiledStateGraph' 요청 인입 완료"
+        - 예: "A2A Agent 요청 처리 중..."
+        """
+        if not text:
+            return text
+
+        patterns = [
+            r"A2A\s+Agent\s*'[^']*'\s*요청\s*인입\s*완료",
+            r"A2A\s+Agent\s*요청\s*처리\s*중\.\.\.",
+        ]
+
+        cleaned = text
+        for pattern in patterns:
+            cleaned = re.sub(pattern, "", cleaned)
+
+        # 중간에 남은 이중 공백/개행을 정리
+        cleaned = re.sub(r"\s{2,}", " ", cleaned)
+        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+        return cleaned
 
 
 async def query_a2a_agent(

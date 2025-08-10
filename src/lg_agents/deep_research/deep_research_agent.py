@@ -119,11 +119,6 @@ class AgentState(BaseGraphState):
     final_report: str  # 최종 보고서
 
 
- 
- 
-# ==================== Utility Functions ====================
-
-
 # ==================== Helper Functions for Clarification ====================
 async def _get_clarification_model(config: RunnableConfig) -> BaseChatModel:
     """명확화를 위한 LLM 모델 생성"""
@@ -164,15 +159,16 @@ def _create_clarification_response(response: ClarifyWithUser) -> Command:
 
 # ==================== Main Nodes ====================
 async def clarify_with_user(
-    state: AgentState, config: RunnableConfig
+    state: AgentState, 
+    config: RunnableConfig
 ) -> Command[Literal["write_research_brief", "__end__"]]:
     """사용자에게 이 질문의 구체화가 필요한지 확인
-    
+
     이 함수는 다음 단계로 분리됨:
-    1. 명확화 허용 여부 확인
-    2. LLM 모델 생성
-    3. 명확화 필요성 체크
-    4. 적절한 응답 반환
+        1. 명확화 허용 여부 확인
+        2. LLM 모델 생성
+        3. 명확화 필요성 체크
+        4. 적절한 응답 반환
     """
     start_time = time.time()
     logger.info("Starting clarify_with_user")
@@ -237,13 +233,14 @@ async def write_research_brief(
 
     return Command(
         goto="research_supervisor",
+        # 커스텀된 출력물인 이유는 Sub-Graph 의 State 구조를 만족시키기 위해서
         update={
             "research_brief": response.research_brief,
             "supervisor_messages": {
                 "type": "override",
                 "value": [
                     SystemMessage(content=supervisor_prompt),
-                    HumanMessage(content=response.research_brief),
+                    HumanMessage(content=response.research_brief), # 유저의 원본 질문이 아님.
                 ],
             },
         },
@@ -300,14 +297,16 @@ async def final_report_generation(state: AgentState, config: RunnableConfig):
         logger.info(f"final_report_generation failed after {time.time() - start_time:.2f}s")
         return {"final_report": f"Error generating final report: {e}", **cleared_state}
 
-
+# 선언
 deep_researcher_builder = StateGraph(state_schema=AgentState, config_schema=ResearchConfig)
+# 노드
 deep_researcher_builder.add_node("clarify_with_user", clarify_with_user)
 deep_researcher_builder.add_node("write_research_brief", write_research_brief)
 deep_researcher_builder.add_node("research_supervisor", build_supervisor_subgraph())
 deep_researcher_builder.add_node("final_report_generation", final_report_generation)
+# 엣지
 deep_researcher_builder.add_edge(START, "clarify_with_user")
 deep_researcher_builder.add_edge("research_supervisor", "final_report_generation")
 deep_researcher_builder.add_edge("final_report_generation", END)
-
+# 그래프 컴파일
 deep_research_graph = deep_researcher_builder.compile()

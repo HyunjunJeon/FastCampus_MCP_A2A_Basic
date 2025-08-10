@@ -217,10 +217,8 @@ class LangGraphWrappedA2AExecutor(AgentExecutor):
             await event_queue.enqueue_event(task)
 
         updater = TaskUpdater(event_queue, task.id, task.context_id)
-        await updater.update_status(
-            TaskState.submitted,
-            new_agent_text_message(f"A2A Agent '{self.graph.__class__.__name__}' 요청 인입 완료", task.context_id, task.id),
-        )
+        # 상태 변경은 기록하되, 텍스트 메시지는 보내지 않음(최종 결과에 섞이지 않도록)
+        await updater.update_status(TaskState.submitted)
 
         try:
             logger.info(f"A2A Agent 요청 처리 시작 - 유저 질의:{query}")
@@ -228,10 +226,8 @@ class LangGraphWrappedA2AExecutor(AgentExecutor):
             last_result: Any | None = None
             accumulated_text: str = ""
             # NOTE: 랭그래프를 astream 으로 실행
-            await updater.update_status(
-                TaskState.working,
-                new_agent_text_message("A2A Agent 요청 처리 중...", task.context_id, task.id),
-            )   
+            # 작업 시작 상태만 갱신 (불필요한 상태 텍스트 전송 금지)
+            await updater.update_status(TaskState.working)
             async for chunk in self.graph.astream({"messages": [HumanMessage(content=query)]}):
                 last_result = chunk
                 try:
@@ -269,7 +265,8 @@ class LangGraphWrappedA2AExecutor(AgentExecutor):
                 # artifact_id=str(uuid.uuid4()), # 안줘도 내부에서 만들어줌
                 name='result',
             )
-            await updater.complete(new_agent_text_message(f"[A2A Result] {final_text}", task.context_id, task.id))
+            # 완료 이벤트만 전송 (텍스트 메시지로 결과를 중복 전송하지 않음)
+            await updater.complete()
 
         except Exception as e:
             logger.error(f'A2A 실행 중 오류: {e}')

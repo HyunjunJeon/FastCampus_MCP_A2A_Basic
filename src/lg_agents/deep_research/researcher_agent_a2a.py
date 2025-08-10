@@ -27,7 +27,7 @@ class ResearcherA2AState(TypedDict):
 
 
 def build_researcher_a2a_graph():
-    researcher_subgraph = build_researcher_subgraph()
+    lg_researcher_subgraph = build_researcher_subgraph()
 
     async def prepare(state: ResearcherA2AState, config):
         messages = state.get("messages", [])
@@ -48,7 +48,7 @@ def build_researcher_a2a_graph():
 
     builder = StateGraph(state_schema=ResearcherA2AState, config_schema=ResearchConfig)
     builder.add_node("prepare", prepare)
-    builder.add_node("researcher_subgraph", researcher_subgraph)
+    builder.add_node("researcher_subgraph", lg_researcher_subgraph)
     builder.add_node("finalize", finalize)
     builder.add_edge(START, "prepare")
     builder.add_edge("researcher_subgraph", "finalize")

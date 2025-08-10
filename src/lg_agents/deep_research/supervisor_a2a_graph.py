@@ -90,13 +90,26 @@ async def _is_a2a_server_alive(base_url: str, timeout_seconds: float = 1.5) -> b
 
 
 async def _execute_parallel_research(conduct_research_calls: list, config: RunnableConfig, researcher_subgraph) -> list:
+    """
+    A2A 호출 경계: Supervisor → Researcher
+    - 연구자 호출을 원격 A2A 에이전트로 위임 가능한 경우 네트워크 경유로 병렬 실행합니다.
+    - 원격 호출이 불가하거나 실패하면 로컬 `researcher_subgraph` 실행으로 폴백합니다.
+    - 엔드포인트는 `ResearchConfig.get_a2a_endpoint("researcher")`로 조회하며,
+      `_is_a2a_server_alive()`로 헬스체크 후 `query_a2a_agent()`를 통해 호출합니다.
+    - 호출 결과는 `compressed_research`/`raw_notes` 형태로 상위 노드에 반환됩니다.
+    """
     configurable = ResearchConfig.from_runnable_config(config)
+    # A2A 엔드포인트 조회: Researcher 역할의 A2A 에이전트 URL
     base_url = configurable.get_a2a_endpoint("researcher")
     use_remote = False
     if isinstance(base_url, str) and base_url:
+        # A2A 서버 가용성 확인(health 체크 200 응답 시 사용)
         use_remote = await _is_a2a_server_alive(base_url)
 
     if use_remote:
+        # A2A 호출 루트: Supervisor → Researcher 원격 호출
+        # - 각 ConductResearch 툴콜을 독립 요청으로 변환하여 병렬 실행합니다.
+        # - 네트워크 지연/실패 상황을 고려해 try/except로 안전하게 처리합니다.
         async def _call_remote(tool_call):
             topic = _tc_args(tool_call).get("research_topic", "")
             try:
@@ -115,10 +128,12 @@ async def _execute_parallel_research(conduct_research_calls: list, config: Runna
                 text = "Error synthesizing research report"
             return {"compressed_research": text, "raw_notes": []}
 
+        # 원격 요청들을 동시에 실행
         coros = [_call_remote(tool_call) for tool_call in conduct_research_calls]
         return await asyncio.gather(*coros)
 
     # Fallback: 로컬 서브그래프 실행
+    logger.info(f"Fallback: 로컬 서브그래프 실행 | 주제: {conduct_research_calls}")
     coros = [
         researcher_subgraph.ainvoke(
             {
@@ -205,7 +220,10 @@ def build_supervisor_a2a_graph():
             )
         except Exception as e:
             logger.error(f"Supervisor tools error: {e}")
-    builder = StateGraph(state_schema=DeepResearchSupervisorState, config_schema=ResearchConfig)
+    builder = StateGraph(
+        state_schema=DeepResearchSupervisorState, 
+        config_schema=ResearchConfig,
+    )
     builder.add_node("supervisor", supervisor)
     builder.add_node("supervisor_tools", supervisor_tools)
     builder.add_edge(START, "supervisor")
