@@ -61,7 +61,8 @@ class EmbeddedA2AServerManager:
 
             app.router.routes.append(Route("/health", health_check, methods=["GET"]))
 
-            config = uvicorn.Config(app, host=host, port=port, log_level="info", access_log=False)
+            # Avoid uvicorn default dictConfig to prevent formatter conflicts when app overrides logging
+            config = uvicorn.Config(app, host=host, port=port, log_level="info", access_log=False, log_config=None)
             server = uvicorn.Server(config)
             logger.info(f"🚀 Graph A2A Agent 서버 시작 중... (포트: {port})")
             server_task = asyncio.create_task(server.serve())

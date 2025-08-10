@@ -219,13 +219,11 @@ class LangGraphWrappedA2AExecutor(AgentExecutor):
         updater = TaskUpdater(event_queue, task.id, task.context_id)
         await updater.update_status(
             TaskState.submitted,
-            new_agent_text_message("A2A Agent 요청 인입 완료", task.context_id, task.id),
+            new_agent_text_message(f"A2A Agent '{self.graph.__class__.__name__}' 요청 인입 완료", task.context_id, task.id),
         )
 
         try:
             logger.info(f"A2A Agent 요청 처리 시작 - 유저 질의:{query}")
-
-            # 초기 상태 메시지는 사용자 출력 노이즈를 유발하므로 생략
 
             last_result: Any | None = None
             accumulated_text: str = ""
@@ -271,7 +269,7 @@ class LangGraphWrappedA2AExecutor(AgentExecutor):
                 # artifact_id=str(uuid.uuid4()), # 안줘도 내부에서 만들어줌
                 name='result',
             )
-            await updater.complete(new_agent_text_message(final_text, task.context_id, task.id))
+            await updater.complete(new_agent_text_message(f"[A2A Result] {final_text}", task.context_id, task.id))
 
         except Exception as e:
             logger.error(f'A2A 실행 중 오류: {e}')

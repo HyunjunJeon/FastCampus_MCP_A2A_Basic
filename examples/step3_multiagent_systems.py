@@ -57,6 +57,49 @@ sys.path.insert(0, str(PROJECT_ROOT))
 load_dotenv(PROJECT_ROOT / ".env")
 
 
+# --- 런타임 로그 파일 저장 설정 (logs/step3_*.log) ---
+class _Tee:
+    def __init__(self, stream, file):
+        self._stream = stream
+        self._file = file
+
+    def write(self, data):
+        try:
+            self._stream.write(data)
+        except Exception:
+            pass
+        try:
+            self._file.write(data)
+        except Exception:
+            pass
+
+    def flush(self):
+        try:
+            self._stream.flush()
+        except Exception:
+            pass
+        try:
+            self._file.flush()
+        except Exception:
+            pass
+
+
+def _enable_file_logging_for_step(step_number: int) -> str:
+    logs_dir = PROJECT_ROOT / "logs"
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_path = logs_dir / f"step{step_number}_{ts}.log"
+
+    # 환경변수 기반 로거들도 파일로 쓰도록 힌트 제공
+    os.environ["LOG_FILE"] = str(log_path)
+    os.environ["LOG_FILE_PATH"] = str(log_path)
+
+    # stdout/stderr Tee 설정 (print와 로거 모두 파일에 기록되도록)
+    f = open(log_path, "a", encoding="utf-8")
+    sys.stdout = _Tee(sys.stdout, f)
+    sys.stderr = _Tee(sys.stderr, f)
+    return str(log_path)
+
 class MultiAgentSystemLauncher:
     """
     멀티에이전트 시스템 실행기
@@ -158,7 +201,9 @@ class MultiAgentSystemLauncher:
         from src.a2a_integration.a2a_lg_embedded_server_manager import start_embedded_graph_server
         from src.a2a_integration.a2a_lg_utils import create_agent_card
         from a2a.types import AgentSkill
-        from src.lg_agents.deep_research.deep_research_agent import deep_research_graph
+        from src.lg_agents.deep_research.deep_research_agent_a2a import deep_research_graph_a2a
+        from src.lg_agents.deep_research.researcher_agent_a2a import build_researcher_a2a_graph
+        from src.lg_agents.deep_research.supervisor_a2a_graph import build_supervisor_a2a_graph
 
         # 그래프 기반: 전체 파이프라인 그래프 서버 1개만 띄워 비교에 활용
         try:
@@ -173,12 +218,13 @@ class MultiAgentSystemLauncher:
             ]
             
             # 고정 포트/호스트로 시작하여 AgentCard.url과 일치시킴
-            port = 8010
-            host = "0.0.0.0"
+            port = 8092
+            host = "0.0.0.0"  # 바인딩 호스트
+            card_host = "localhost"  # 클라이언트 접속 호스트
             agent_card = create_agent_card(
-                name="Deep Research Agent",
-                description="Deep research pipeline",
-                url=f"http://{host}:{port}",
+                name="Deep Research A2A Agent",
+                description="Deep research pipeline (Supervisor A2A)",
+                url=f"http://{card_host}:{port}",
                 version="1.0.0",
                 skills=skills,
                 default_input_modes=["text/plain"],
@@ -187,19 +233,95 @@ class MultiAgentSystemLauncher:
                 push_notifications=True,
             )
             graph_ctx = start_embedded_graph_server(
-                graph=deep_research_graph,
+                graph=deep_research_graph_a2a,
                 agent_card=agent_card,
                 host=host,
                 port=port,
             )
-            self.embedded_managers.append(("DeepResearchGraph", graph_ctx))
-            safe_print("✅ DeepResearchGraph 임베디드 서버 준비 완료 (graph)")
+            self.embedded_managers.append(("DeepResearchA2AGraph", graph_ctx))
+            safe_print("✅ DeepResearchA2AGraph 임베디드 서버 준비 완료 (graph)")
         except Exception as e:
             safe_print(f"⚠️ DeepResearchGraph 시작 실패: {e}")
+
+        # 연구자 A2A 그래프 서버 (Supervisor가 원격 호출)
+        try:
+            r_port = 8091  # ResearchConfig 기본 a2a_endpoint와 정렬
+            r_host = "0.0.0.0"  # 바인딩 호스트
+            r_card_host = "localhost"  # 클라이언트 접속 호스트
+            r_skills = [
+                AgentSkill(
+                    id="conduct_research",
+                    name="Researcher Agent",
+                    description="Web research via MCP tools",
+                    tags=["research", "web", "mcp"],
+                    examples=["Search web and synthesize findings"],
+                )
+            ]
+            researcher_card = create_agent_card(
+                name="Researcher Agent",
+                description="Researcher subgraph wrapped as A2A",
+                url=f"http://{r_card_host}:{r_port}",
+                version="1.0.0",
+                skills=r_skills,
+                default_input_modes=["text/plain"],
+                default_output_modes=["text/plain"],
+                streaming=True,
+                push_notifications=True,
+            )
+            researcher_graph = build_researcher_a2a_graph()
+            researcher_ctx = start_embedded_graph_server(
+                graph=researcher_graph,
+                agent_card=researcher_card,
+                host=r_host,
+                port=r_port,
+            )
+            self.embedded_managers.append(("ResearcherA2AGraph", researcher_ctx))
+            safe_print("✅ ResearcherA2AGraph 임베디드 서버 준비 완료 (graph)")
+        except Exception as e:
+            safe_print(f"⚠️ ResearcherA2AGraph 시작 실패: {e}")
+
+        # Supervisor 단독 A2A 그래프 서버 (옵션)
+        try:
+            s_port = 8090
+            s_host = "0.0.0.0"
+            s_card_host = "localhost"
+            s_skills = [
+                AgentSkill(
+                    id="lead_research",
+                    name="Supervisor Agent",
+                    description="Lead and orchestrate research tasks",
+                    tags=["supervisor", "orchestrator"],
+                    examples=["Plan and coordinate multiple research units"],
+                )
+            ]
+            supervisor_card = create_agent_card(
+                name="Supervisor Agent",
+                description="Supervisor graph wrapped as A2A",
+                url=f"http://{s_card_host}:{s_port}",
+                version="1.0.0",
+                skills=s_skills,
+                default_input_modes=["text/plain"],
+                default_output_modes=["text/plain"],
+                streaming=True,
+                push_notifications=True,
+            )
+            supervisor_graph = build_supervisor_a2a_graph()
+            supervisor_ctx = start_embedded_graph_server(
+                graph=supervisor_graph,
+                agent_card=supervisor_card,
+                host=s_host,
+                port=s_port,
+            )
+            self.embedded_managers.append(("SupervisorA2AGraph", supervisor_ctx))
+            safe_print("✅ SupervisorA2AGraph 임베디드 서버 준비 완료 (graph)")
+        except Exception as e:
+            safe_print(f"⚠️ SupervisorA2AGraph 시작 실패: {e}")
 
         total_agents = len(self.embedded_managers)
         safe_print(f"✅ 총 {total_agents}개의 A2A 임베디드 에이전트 준비 완료")
         safe_print("   임베디드 서버는 빠른 초기화로 즉시 사용 가능합니다.")
+        if total_agents < 3:
+            safe_print("⚠️ 예상된 3개 A2A 서버 중 일부가 시작되지 않았습니다 (DeepResearch/Researcher/Supervisor)")
 
         return self.embedded_managers
 
@@ -361,20 +483,19 @@ async def main():
                     server_infos.append(ctx_manager)
                     safe_print(f"🔗 {name} 임베디드 서버 활성화됨")
 
-                    # DeepResearchA2AAgent가 사용할 엔드포인트 매핑 수집
-                    agent_type = ctx_manager.get("agent_type")
+                    # 비교 모듈에 전달할 엔드포인트 매핑 수집
                     base_url = ctx_manager.get("base_url")
-                    if hasattr(agent_type, "value"):
-                        if agent_type.value == "planner":
-                            role_endpoints["planner"] = base_url
-                        elif agent_type.value == "researcher":
-                            role_endpoints["researcher"] = base_url
-                        elif agent_type.value == "analysis":
-                            role_endpoints["analysis"] = base_url
-                        elif agent_type.value == "writer":
-                            role_endpoints["writer"] = base_url
+                    if name == "DeepResearchA2AGraph":
+                        role_endpoints["deep_research"] = base_url
+                    elif name == "ResearcherA2AGraph":
+                        role_endpoints["researcher"] = base_url
+                    elif name == "SupervisorA2AGraph":
+                        role_endpoints["supervisor"] = base_url
 
                 safe_print("✅ 모든 임베디드 서버가 활성화되었습니다!")
+                safe_print(f"🔎 활성 서버 수: {len(server_infos)} (예상: 3)")
+                if len(server_infos) < 3:
+                    safe_print("⚠️ 서버 수가 부족합니다. A2A 비교는 계속 시도하되 일부 경로에서 폴백이 발생할 수 있습니다.")
                 
                 # 실제 비교 실행
                 # 비교 실행에 동적으로 할당된 A2A 엔드포인트 전달
@@ -417,6 +538,10 @@ if __name__ == "__main__":
     실제 동작하는 멀티에이전트 시스템을 통해
     이론과 실제의 차이를 직접 경험하고 학습합니다.
     """
+    # 로그 파일 활성화
+    log_file = _enable_file_logging_for_step(3)
+    safe_print(f"📝 로그 파일: {log_file}")
+
     # 실행 전 사전 요구사항 확인
     safe_print("🔍 사전 요구사항 확인 중...")
 

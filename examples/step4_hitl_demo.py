@@ -1635,6 +1635,45 @@ async def main():
         return 0
 
 
+def _enable_file_logging_for_step(step_number: int) -> str:
+    logs_dir = os.path.join(PROJECT_ROOT, "logs")
+    os.makedirs(logs_dir, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_path = os.path.join(logs_dir, f"step{step_number}_{ts}.log")
+
+    # 환경변수 힌트 (구조화 로깅/루트 로거 파일 핸들러)
+    os.environ["LOG_FILE"] = log_path
+    os.environ["LOG_FILE_PATH"] = log_path
+
+    class _Tee:
+        def __init__(self, stream, file):
+            self._stream = stream
+            self._file = file
+        def write(self, data):
+            try:
+                self._stream.write(data)
+            except Exception:
+                pass
+            try:
+                self._file.write(data)
+            except Exception:
+                pass
+        def flush(self):
+            try:
+                self._stream.flush()
+            except Exception:
+                pass
+            try:
+                self._file.flush()
+            except Exception:
+                pass
+
+    f = open(log_path, "a", encoding="utf-8")
+    sys.stdout = _Tee(sys.stdout, f)
+    sys.stderr = _Tee(sys.stderr, f)
+    return log_path
+
+
 if __name__ == "__main__":
     print("""
     📌 실행 전 확인사항:
@@ -1657,6 +1696,8 @@ if __name__ == "__main__":
     """)
 
     try:
+        log_file = _enable_file_logging_for_step(4)
+        print(f"📝 로그 파일: {log_file}")
         asyncio.run(main())
     except KeyboardInterrupt:
         print("\n\n🛑 프로그램이 사용자에 의해 중단되었습니다.")

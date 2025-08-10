@@ -11,10 +11,12 @@
 - researcher_graph.py: MCP 도구 리서처 서브그래프(도구 실행/압축).
 - supervisor_graph.py: 연구 반복 제어/종료 조건/병렬 실행 조정.
 - shared.py: 공용 리듀서/도구 스키마/메시지→노트 추출 유틸.
+ - supervisor_a2a_graph.py: Supervisor를 A2A 원격 리서처 호출로 확장(실패 시 로컬 서브그래프 폴백).
+ - deep_research_agent_a2a.py: 메인 그래프에서 Supervisor만 A2A 버전으로 교체한 그래프 진입점.
+ - researcher_agent_a2a.py: 리서처 서브그래프를 단독 A2A 에이전트로 래핑.
 
 ### Related
 
 - 상위: [../code_index.md](../code_index.md)
 - 베이스: [../base/code_index.md](../base/code_index.md)
 - 전체: [../../code_index.md](../../code_index.md)
-

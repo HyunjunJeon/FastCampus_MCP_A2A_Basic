@@ -19,3 +19,7 @@ __pycache__/
 shrimp_data/
 *mcp.json
 .serena/
+
+# Service
+reports/
+logs/

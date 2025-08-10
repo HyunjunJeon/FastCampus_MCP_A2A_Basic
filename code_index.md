@@ -124,12 +124,15 @@ fc_mcp_a2a/
    │  │  └─ code_index.md
    │  ├─ deep_research/
    │  │  ├─ __init__.py
-   │  │  ├─ deep_research_agent.py
-   │  │  ├─ deep_research_agent_hitl.py
-   │  │  ├─ prompts.py
-   │  │  ├─ researcher_graph.py
-   │  │  ├─ supervisor_graph.py
-   │  │  └─ code_index.md
+    │  │  ├─ deep_research_agent.py
+    │  │  ├─ deep_research_agent_hitl.py
+    │  │  ├─ deep_research_agent_a2a.py
+    │  │  ├─ researcher_agent_a2a.py
+    │  │  ├─ supervisor_a2a_graph.py
+    │  │  ├─ prompts.py
+    │  │  ├─ researcher_graph.py
+    │  │  ├─ supervisor_graph.py
+    │  │  └─ code_index.md
    │  ├─ research_agent.py
    │  └─ simple/
    │     ├─ __init__.py
@@ -195,7 +198,7 @@ examples/
 - deep_research_a2a_client_comparison.py: A2A 클라이언트 비교 실험.
 - step1_mcp_langgraph.py: Step1 데모( LangGraph+MCP 연동 ).
 - step2_langgraph_a2a_client.py: Step2 데모( A2A 클라이언트 호출 ).
-- step3_multiagent_systems.py: Step3 데모( 멀티 에이전트 ).
+- step3_multiagent_systems.py: Step3 데모( 멀티 에이전트 / 3개 A2A 서버 기동 검증 ).
 - step4_hitl_demo.py: Step4 데모( HITL UI + Deep Research ).
 
 reports/
