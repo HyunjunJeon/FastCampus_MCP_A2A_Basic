@@ -44,6 +44,7 @@ class EmbeddedA2AServerManager:
         if port is None:
             port = self._find_free_port()
         server_key = f"graph:{agent_card.name}:{agent_card.url}"
+        started_successfully = False
         try:
             server_app = to_a2a_starlette_server(
                 graph=graph,
@@ -56,7 +57,6 @@ class EmbeddedA2AServerManager:
             from starlette.requests import Request
 
             async def health_check(request: Request):
-                logger.info(f"🔍 Health check 요청 받음: {request}")
                 return JSONResponse({"status": "healthy", "agent": agent_card.name})
 
             app.router.routes.append(Route("/health", health_check, methods=["GET"]))
@@ -80,10 +80,14 @@ class EmbeddedA2AServerManager:
 
             logger.info(f"✅ Graph A2A Agent 서버 정상 시작됨 - http://{host}:{port}")
 
+            started_successfully = True
             yield {"host": host, "port": port, "base_url": f"http://{host}:{port}", "agent_type": None}
 
         except Exception as e:
-            logger.error(f"❌ Graph A2A Agent 서버 시작 실패: {e}")
+            if not started_successfully:
+                logger.error(f"❌ Graph A2A Agent 서버 시작 실패: {e}")
+            else:
+                logger.error(f"❌ Graph A2A Agent 서버 실행 중 예외 발생: {e}")
             raise
         finally:
             await self._stop_server(server_key)

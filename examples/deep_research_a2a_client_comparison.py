@@ -290,7 +290,7 @@ async def run_a2a_with_tracking(query: str) -> Tuple[Dict[str, Any], Performance
         tracker.log_event("stage_start", "client_setup")
         resolver = A2ACardResolver(
             httpx_client=httpx.AsyncClient(),
-            base_url="http://localhost:8090",
+            base_url="http://localhost:8092",
         )
         agent_card: AgentCard = await resolver.get_agent_card()
         config = ClientConfig(

@@ -38,7 +38,7 @@ class ErrorResponse(BaseModel):
 class BaseMCPServer(ABC):
     """MCP 서버의 베이스 클래스"""
 
-    MCP_PATH = "/mcp"
+    MCP_PATH = "/mcp/"
 
     def __init__(
         self,
@@ -148,29 +148,25 @@ class BaseMCPServer(ABC):
 
         return error_model.model_dump(exclude_none=True)
 
-    def run(self) -> None:
-        """서버를 실행합니다."""
-        import uvicorn
+    def create_app(self) -> Any:
+        """
+        ASGI 앱을 생성합니다.
+        - /health 라우트를 1회만 등록합니다.
+        - FastMCP의 http_app을 반환합니다.
+        """
+        if not getattr(self, "_health_route_registered", False):
+            @self.mcp.custom_route(path="/health", methods=["GET"], include_in_schema=True)
+            async def health_check(request: Request) -> JSONResponse:
+                response_data = self.create_standard_response(
+                    success=True,
+                    query="MCP Server Health check",
+                    data="OK",
+                )
+                return JSONResponse(content=response_data)
+            setattr(self, "_health_route_registered", True)
 
-        # 외부 스코프의 서버 인스턴스 캡처
-        server_instance = self
+        return self.mcp.http_app(path=self.MCP_PATH)
 
-        @self.mcp.custom_route(path="/health", methods=["GET"], include_in_schema=True)
-        async def health_check(request: Request) -> JSONResponse:
-            """Health check 엔드포인트 처리"""
-            response_data = server_instance.create_standard_response(
-                success=True,
-                query="MCP Server Health check",
-                data="OK",
-            )
-            return JSONResponse(content=response_data)
-
-        app = self.mcp.http_app(
-            path=self.MCP_PATH,
-            transport=self.transport,
-        )
-
-        uvicorn.run(app, host=self.host, port=self.port)
 
 
 """

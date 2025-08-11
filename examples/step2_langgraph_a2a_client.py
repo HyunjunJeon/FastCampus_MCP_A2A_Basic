@@ -28,10 +28,10 @@ import asyncio
 import os
 import sys
 from pathlib import Path
-from a2a.types import AgentCapabilities, AgentCard
+from a2a.types import AgentCapabilities
+from a2a_integration.a2a_lg_utils import create_agent_card
 from dotenv import load_dotenv
 from langchain.chat_models import init_chat_model
-from langgraph.checkpoint.memory import MemorySaver
 
 # 프로젝트 루트 경로 추가 - 상위 디렉토리에서 src 모듈 import
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -78,37 +78,50 @@ async def test_a2a_agent_client():
     ]
 
     host = "0.0.0.0"
-    port = 8000
+    port = 10080
 
     async with start_embedded_graph_server(
         graph=agent.graph,
-        agent_card=AgentCard(
+        agent_card=create_agent_card(
             name="검색 에이전트",
             description="다양한 검색을 지원하는 에이전트",
             url=f"http://{host}:{port}",
-            capabilities=AgentCapabilities(
-                streaming=True,
-                push_notifications=True,
-                state_transition_history=True,
-            ),
-            default_input_modes=["text"],
-            default_output_modes=["text"],
             skills=skills,
             version="1.0.0",
-        )
+            default_input_modes=["text/plain", "application/json"],
+            default_output_modes=["text/plain", "application/json"],
+        ),
+        host=host,
+        port=port,
     ) as server_info:
+        print(server_info)
         print(f"✅ 그래프 기반 A2A 서버 시작: {server_info['base_url']}")
 
         # A2A 클라이언트 생성 및 테스트
         async with A2AClientManager(server_info["base_url"]) as client:
             print(f"✅ A2A 클라이언트 연결 성공: {server_info['base_url']}")
+
+            # 1) 단순 텍스트 질의
             query = "LangGraph 와 A2A 통합의 장-단점은?"
-            print(f"\n  🔍 쿼리: {query}")
-            print("  🕒 A2A 프로토콜을 통한 요청 전송 중...")
+            print(f"\n  🔍 텍스트 쿼리: {query}")
+            print("  🕒 A2A 프로토콜(텍스트) 전송 중...")   
             print("===" * 30)
             response = await client.send_query(query)
             print(f"  📝 [에이전트 응답] {response}")
             print("===" * 30)
+
+            # 2) JSON(DataPart) 전송
+            payload = {
+                "messages": [
+                    {"role": "human", "content": "오픈AI와 랭그래프 최근 변화 요약, 지금은 2025년 8월 11일"},
+                ],
+            }
+            print("\n  🔍 JSON 페이로드(DataPart) 전송")
+            print("  🕒 A2A 프로토콜(JSON) 전송 중...")
+            print("===" * 30)
+            await client.send_data(payload)
+            print("===" * 30)
+
             print("\n🎉 모든 A2A 에이전트 통신 테스트 완료!")
 
 

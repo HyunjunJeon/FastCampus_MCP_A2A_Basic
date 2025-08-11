@@ -61,6 +61,9 @@ class ResearchConfig(BaseModel):
     max_react_tool_calls: int = Field(
         default=5, description="ReAct 도구 호출 최대 횟수"
     )
+    supervisor_research_grace_seconds: float = Field(
+        default=0.0, description="Supervisor가 병렬 연구 실행 후 진행 전 대기할 유예 시간(초)"
+    )
     # === HITL 설정 ===
     max_revision_loops: int = Field(
         default=2, description="HITL 거부 시 보고서 개정 루프 최대 횟수"

@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """
 Step 3: Deep Research 시스템 비교 - LangGraph vs A2A
 
@@ -29,13 +30,23 @@ Step 3: Deep Research 시스템 비교 - LangGraph vs A2A
 - 실행 성능과 리소스 사용량 비교
 """
 
-import asyncio
-import sys
 import os
-import httpx
+import sys
 from pathlib import Path
+
+# 프로젝트 루트 및 src 경로를 가장 먼저 sys.path에 추가하여 임포트 오류 방지
+PROJECT_ROOT = Path(__file__).parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+SRC_PATH = PROJECT_ROOT / "src"
+if str(SRC_PATH) not in sys.path:
+    sys.path.insert(0, str(SRC_PATH))
+
+import asyncio
+import httpx
 from datetime import datetime
 from dotenv import load_dotenv
+from lg_agents.deep_research.researcher_graph import researcher_graph
 
 
 def safe_print(*args, **kwargs):
@@ -48,10 +59,6 @@ def safe_print(*args, **kwargs):
         except Exception:
             pass
         return
-
-# 프로젝트 루트 디렉토리 설정 - src 모듈 import를 위한 경로 추가
-PROJECT_ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(PROJECT_ROOT))
 
 # 환경변수 로드 - API 키 및 설정 값들
 load_dotenv(PROJECT_ROOT / ".env")
@@ -201,10 +208,8 @@ class MultiAgentSystemLauncher:
         from src.a2a_integration.a2a_lg_utils import create_agent_card
         from a2a.types import AgentSkill
         from src.lg_agents.deep_research.deep_research_agent_a2a import deep_research_graph_a2a
-        from src.lg_agents.deep_research.researcher_agent_a2a import build_researcher_a2a_graph
-        from src.lg_agents.deep_research.supervisor_a2a_graph import build_supervisor_a2a_graph
+        from src.lg_agents.deep_research.supervisor_graph import build_supervisor_subgraph
 
-        # 그래프 기반: 전체 파이프라인 그래프 서버 1개만 띄워 비교에 활용
         try:
             skills = [
                 AgentSkill(
@@ -226,8 +231,8 @@ class MultiAgentSystemLauncher:
                 url=f"http://{card_host}:{port}",
                 version="1.0.0",
                 skills=skills,
-                default_input_modes=["text/plain"],
-                default_output_modes=["text/plain"],
+                default_input_modes=["text/plain", "application/json"],
+                default_output_modes=["text/plain", "application/json"],
                 streaming=True,
                 push_notifications=True,
             )
@@ -242,7 +247,7 @@ class MultiAgentSystemLauncher:
         except Exception as e:
             safe_print(f"⚠️ DeepResearchGraph 시작 실패: {e}")
 
-        # 연구자 A2A 그래프 서버 (Supervisor가 원격 호출)
+        # 연구자 A2A 그래프 서버
         try:
             r_port = 8091  # ResearchConfig 기본 a2a_endpoint와 정렬
             r_host = "0.0.0.0"  # 바인딩 호스트
@@ -262,12 +267,11 @@ class MultiAgentSystemLauncher:
                 url=f"http://{r_card_host}:{r_port}",
                 version="1.0.0",
                 skills=r_skills,
-                default_input_modes=["text/plain"],
-                default_output_modes=["text/plain"],
+                default_input_modes=["text/plain", "application/json"],
+                default_output_modes=["text/plain", "application/json"],
                 streaming=True,
                 push_notifications=True,
             )
-            researcher_graph = build_researcher_a2a_graph()
             researcher_ctx = start_embedded_graph_server(
                 graph=researcher_graph,
                 agent_card=researcher_card,
@@ -279,7 +283,7 @@ class MultiAgentSystemLauncher:
         except Exception as e:
             safe_print(f"⚠️ ResearcherA2AGraph 시작 실패: {e}")
 
-        # Supervisor 단독 A2A 그래프 서버
+        # Supervisor A2A 그래프 서버
         try:
             s_port = 8090
             s_host = "0.0.0.0"
@@ -299,12 +303,12 @@ class MultiAgentSystemLauncher:
                 url=f"http://{s_card_host}:{s_port}",
                 version="1.0.0",
                 skills=s_skills,
-                default_input_modes=["text/plain"],
-                default_output_modes=["text/plain"],
+                default_input_modes=["text/plain", "application/json"],
+                default_output_modes=["text/plain", "application/json"],
                 streaming=True,
                 push_notifications=True,
             )
-            supervisor_graph = build_supervisor_a2a_graph()
+            supervisor_graph = build_supervisor_subgraph()
             supervisor_ctx = start_embedded_graph_server(
                 graph=supervisor_graph,
                 agent_card=supervisor_card,
@@ -342,19 +346,19 @@ async def run_actual_comparison_with_endpoints(endpoints: dict[str, str] | None 
     """
     safe_print("\n🔬 실제 멀티에이전트 시스템 비교 실행")
     safe_print("=" * 60)
-
-    query = "AI가 교육에 미치는 영향을 분석해주세요"
-    safe_print(f"연구 주제: {query}")
-    safe_print("=" * 60)
-
     try:
-        # 비교 시스템 모듈 임포트
         from examples.compare_systems import run_comparison
 
-        safe_print("\n📈 시스템 비교 실행 중...")
         start_time = datetime.now()
 
-        result = await run_comparison(endpoints=endpoints or {})
+        query = f"OpenAI, Anthropic, Google, Meta, Microsoft 의 AI 기술 동향에 대해 보고서를 작성해주세요. 오늘 날짜: {datetime.now().strftime('%Y-%m-%d')}"
+        
+        result = await run_comparison(
+            query=query,
+            endpoints=endpoints or {},
+            langgraph_run=False,
+            a2a_run=True,
+        )
 
         end_time = datetime.now()
         total_time = (end_time - start_time).total_seconds()
@@ -362,20 +366,6 @@ async def run_actual_comparison_with_endpoints(endpoints: dict[str, str] | None 
         safe_print(f"\n✅ 비교 완료! 총 실행 시간: {total_time:.2f}초")
 
         if result:
-            safe_print("\n📊 비교 결과 요약:")
-
-            # 결과에서 주요 메트릭 추출
-            if "improvements" in result:
-                improvements = result["improvements"]
-                if improvements.get("state_complexity_reduction"):
-                    safe_print(
-                        f"   - State 복잡성 감소: {improvements['state_complexity_reduction']}"
-                    )
-                if improvements.get("parallel_speedup"):
-                    safe_print(
-                        f"   - 병렬 실행 속도 향상: {improvements['parallel_speedup']}"
-                    )
-
             saved_path = result.get("output_path") if isinstance(result, dict) else None
             if saved_path:
                 safe_print(f"\n💾 세부 결과가 {saved_path}에 저장되었습니다.")
@@ -414,20 +404,13 @@ async def main():
     launcher = MultiAgentSystemLauncher()
 
     try:
-        # 프로젝트 개요 출력
-        safe_print("\n🎯 LangGraph vs A2A 시스템 비교 데모")
         safe_print("   - LangGraph: 복잡한 상태 그래프 방식")
         safe_print("   - A2A: 단순한 에이전트 협업 방식")
-
-        # 자동 진행 모드 - 입력 대기 없이 바로 시작
-        safe_print("\n🚀 실제 시스템을 자동으로 시작합니다...")
-        await asyncio.sleep(1)  # 짧은 대기
 
         # 3. 실제 시스템 시작 및 상태 확인
         safe_print("\n🚀 멀티에이전트 시스템 시작 (임베디드 서버 방식)")
         safe_print("=" * 60)
         safe_print("\n🤖 단계 1: A2A 에이전트들 임베디드 서버로 안전 시작")
-
         # A2A 에이전트들을 임베디드 서버로 시작
         embedded_agents = await launcher.start_a2a_embedded_agents()
 
@@ -532,10 +515,6 @@ async def main():
 if __name__ == "__main__":
     """
     Step 3 데모 실행 진입점
-    
-    === 교육적 목점 ===
-    실제 동작하는 멀티에이전트 시스템을 통해
-    이론과 실제의 차이를 직접 경험하고 학습합니다.
     """
     # 로그 파일 활성화
     log_file = _enable_file_logging_for_step(3)

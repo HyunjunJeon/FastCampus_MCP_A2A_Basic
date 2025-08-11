@@ -4,7 +4,7 @@ HITL 매니저 - Human-In-The-Loop 매니저
 import asyncio
 import logging
 from typing import Optional, Dict, Any, List, Callable
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from .models import ApprovalRequest, ApprovalStatus, ApprovalType, HITLPolicy
 from .storage import approval_storage
@@ -92,7 +92,7 @@ class HITLManager:
                 "task_id": request.task_id,
                 "topic": request.title,
                 "agent_id": request.agent_id,
-                "started_at": datetime.utcnow(),
+                "started_at": datetime.now(),
                 "expected_duration": "5-15분",
                 "stages": ["계획 수립", "데이터 수집", "분석 및 보고서 작성"]
             }
@@ -117,8 +117,8 @@ class HITLManager:
                     "request_id": request.request_id,
                     "task_id": request.task_id,
                     "success": False,
-                    "started_at": datetime.utcnow(),
-                    "completed_at": datetime.utcnow(),
+                    "started_at": datetime.now(),
+                    "completed_at": datetime.now(),
                     "final_status": "실패",
                     "summary": f"Deep Research 실행 중 오류가 발생했습니다: {str(e)}"
                 }
@@ -160,7 +160,7 @@ class HITLManager:
         from datetime import datetime
         import asyncio
         
-        started_at = datetime.utcnow()
+        started_at = datetime.now()
         
         try:
             # 단계별 진행상황 시뮬레이션 (실제 Deep Research 실행과 병행)
@@ -185,7 +185,7 @@ class HITLManager:
                         "total_stages": 3,
                         "estimated_time": f"{4 - stage_info['stage']}분 남음",
                         "current_action": stage_info["action"],
-                        "timestamp": datetime.utcnow()
+                        "timestamp": datetime.now()
                     }
                     await connection_manager.broadcast_research_progress(progress_data)
                 
@@ -201,14 +201,14 @@ class HITLManager:
                 import os
                 os.makedirs("reports", exist_ok=True)
                 from datetime import datetime as _dt
-                ts = _dt.utcnow().strftime("%Y%m%d_%H%M%S")
+                ts = _dt.now().strftime("%Y%m%d_%H%M%S")
                 filename = f"final_report_{request.request_id}_{ts}.md"
                 header = (
                     f"# 최종 보고서\n\n"
                     f"요청 ID: {request.request_id}\n"
                     f"제목: {request.title}\n"
                     f"시작: {started_at.isoformat()}Z\n"
-                    f"완료: {_dt.utcnow().isoformat()}Z\n\n---\n\n"
+                    f"완료: {_dt.now().isoformat()}Z\n\n---\n\n"
                 )
                 final_report_text = research_result.get("final_report", "")
                 with open(os.path.join("reports", filename), "w", encoding="utf-8") as f:
@@ -222,9 +222,9 @@ class HITLManager:
                 "request_id": request.request_id,
                 "task_id": request.task_id,
                 "success": True,
-                "total_duration": f"{(datetime.utcnow() - started_at).seconds}초",
+                "total_duration": f"{(datetime.now() - started_at).seconds}초",
                 "started_at": started_at,
-                "completed_at": datetime.utcnow(),
+                "completed_at": datetime.now(),
                 "final_status": "완료",
                 "summary": research_result.get("summary", "Deep Research가 성공적으로 완료되었습니다."),
                 "final_report": research_result.get("final_report", ""),
@@ -397,7 +397,7 @@ class HITLManager:
 
         # 타임아웃 설정
         timeout = timeout_seconds or self.policy.auto_approve_timeout
-        expires_at = datetime.utcnow() + timedelta(seconds=timeout)
+        expires_at = datetime.now() + timedelta(seconds=timeout)
         
         # 요청 생성
         request = ApprovalRequest(
@@ -442,7 +442,7 @@ class HITLManager:
                 return request
             
             # 타임아웃 확인
-            if request.expires_at and datetime.utcnow() > request.expires_at:
+            if request.expires_at and datetime.now() > request.expires_at:
                 if auto_approve_on_timeout:
                     await self._handle_auto_approval(request_id)
                 else:

@@ -65,27 +65,6 @@ fc_mcp_a2a/
 │  ├─ step2.md
 │  ├─ step3.md
 │  └─ step4.md
-├─ tests/
-│  ├─ run_tests.py
-│  ├─ debug_message_test.py
-│  ├─ integration_test.py
-│  ├─ test_a2a_integration.py
-│  ├─ test_artifact_streaming.sh
-│  ├─ test_comprehensive_hitl.py
-│  ├─ test_e2e_final_validation.py
-│  ├─ test_env_and_streaming.py
-│  ├─ test_hitl_approval_flow.py
-│  ├─ test_hitl_integration.py
-│  ├─ test_integration_steps_1_to_4.py
-│  ├─ test_mcp_tools_validation.py
-│  ├─ test_quick_check.py
-│  ├─ test_reports_saving.py
-│  ├─ test_safeeventqueue.py
-│  ├─ test_search_a2a.py
-│  ├─ test_simple_a2a.py
-│  ├─ test_simple_mcp_agent.py
-│  ├─ test_simple_streaming.sh
-│  └─ test_streaming_curl.sh
 └─ src/
    ├─ __init__.py
    ├─ code_index.md
@@ -125,7 +104,7 @@ fc_mcp_a2a/
    │  ├─ deep_research/
    │  │  ├─ __init__.py
     │  │  ├─ deep_research_agent.py
-    │  │  ├─ deep_research_agent_hitl.py
+    │  │  ├─ hitl_nodes.py
     │  │  ├─ deep_research_agent_a2a.py
     │  │  ├─ researcher_agent_a2a.py
     │  │  ├─ supervisor_a2a_graph.py
@@ -285,7 +264,7 @@ src/lg_agents/deep_research/ (see module index: [src/lg_agents/deep_research/cod
 
 - __init__.py: 패키지 초기화.
 - deep_research_agent.py: Deep Research 주 그래프(명확화/계획/연구/보고서).
-- deep_research_agent_hitl.py: 최종 승인/개정 루프가 포함된 HITL 확장.
+- hitl_nodes.py: 최종 승인/개정 루프 노드/상태(공용, A2A 그래프에서 재사용).
 - prompts.py: 프롬프트/날짜 유틸.
 - researcher_graph.py: MCP 도구 기반 Researcher 서브그래프.
 - supervisor_graph.py: 연구 반복/종료 조건을 관리하는 Supervisor.

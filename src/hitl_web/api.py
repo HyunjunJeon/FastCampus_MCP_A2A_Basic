@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 import logging
 from pathlib import Path
+from datetime import timezone
 
 from hitl.manager import hitl_manager
 from hitl.models import ApprovalRequest, ApprovalStatus, ApprovalType
@@ -39,78 +40,6 @@ async def lifespan(app: FastAPI):
         await manager.broadcast(
             {"type": "approval_update", "data": req_dict}
         )
-
-    # Deep Research 진행상황 브로드캐스트 함수들
-    async def broadcast_research_progress(progress_data: dict):
-        """Deep Research 진행상황 브로드캐스트"""
-        from datetime import datetime
-        
-        # datetime 필드 처리
-        if progress_data.get('timestamp'):
-            if isinstance(progress_data['timestamp'], datetime):
-                progress_data['timestamp'] = progress_data['timestamp'].isoformat()
-        
-        await manager.broadcast({
-            "type": "research_progress",
-            "data": {
-                "request_id": progress_data.get("request_id"),
-                "task_id": progress_data.get("task_id"),
-                "stage": progress_data.get("stage"),
-                "stage_name": progress_data.get("stage_name"),
-                "progress": progress_data.get("progress", 0),
-                "total_stages": progress_data.get("total_stages", 3),
-                "estimated_time": progress_data.get("estimated_time"),
-                "current_action": progress_data.get("current_action"),
-                "timestamp": progress_data.get("timestamp")
-            }
-        })
-
-    async def broadcast_research_completed(completion_data: dict):
-        """Deep Research 완료 브로드캐스트"""
-        from datetime import datetime
-        
-        # datetime 필드 처리
-        for date_field in ['started_at', 'completed_at']:
-            if completion_data.get(date_field):
-                if isinstance(completion_data[date_field], datetime):
-                    completion_data[date_field] = completion_data[date_field].isoformat()
-        
-        await manager.broadcast({
-            "type": "research_completed",
-            "data": {
-                "request_id": completion_data.get("request_id"),
-                "task_id": completion_data.get("task_id"),
-                "success": completion_data.get("success", True),
-                "total_duration": completion_data.get("total_duration"),
-                "started_at": completion_data.get("started_at"),
-                "completed_at": completion_data.get("completed_at"),
-                "final_status": completion_data.get("final_status"),
-                "summary": completion_data.get("summary")
-            }
-        })
-
-    # Deep Research 시작 브로드캐스트 함수
-    async def broadcast_research_started(start_data: dict):
-        """Deep Research 시작 브로드캐스트"""
-        from datetime import datetime
-        
-        if start_data.get('started_at'):
-            if isinstance(start_data['started_at'], datetime):
-                start_data['started_at'] = start_data['started_at'].isoformat()
-        
-        await manager.broadcast({
-            "type": "research_started", 
-            "data": {
-                "request_id": start_data.get("request_id"),
-                "task_id": start_data.get("task_id"),
-                "topic": start_data.get("topic"),
-                "agent_id": start_data.get("agent_id"),
-                "started_at": start_data.get("started_at"),
-                "expected_duration": start_data.get("expected_duration", "알 수 없음"),
-                "stages": start_data.get("stages", ["계획 승인", "데이터 검증", "최종 승인"]),
-                "status": "진행 중"
-            }
-        })
 
     # WebSocket 연결 관리자를 HITL Manager에 설정
     hitl_manager.set_connection_manager(manager)
@@ -160,7 +89,7 @@ async def hitl_dashboard():
 
 @app.get("/hitl")
 async def hitl_dashboard_alias():
-    """/hitl 경로로도 대시보드를 제공 (문서/테스트 일관성)"""
+    """/hitl 경로로도 대시보드를 제공"""
     from fastapi.responses import FileResponse
 
     index_path = Path(__file__).parent / "static" / "index.html"
@@ -193,7 +122,7 @@ async def get_a2a_status():
             except Exception:
                 pass
 
-            # Health 확인 (보조 신호)
+            # Health 확인
             try:
                 async with session.get(f"{base_url}/health") as resp:
                     healthy = resp.status == 200
@@ -207,7 +136,7 @@ async def get_a2a_status():
         "healthy": healthy,
         "agent": agent,
         "base_url": base_url,
-        "checked_at": datetime.utcnow().isoformat() + "Z",
+        "checked_at": datetime.now().isoformat() + "Z",
     }
 
 
@@ -543,7 +472,7 @@ async def start_deep_research(request: ResearchStartRequest):
     
     try:
         # 현재 진행 중인 연구가 있는지 확인 (중복 실행 방지)
-        # 이 부분은 나중에 상태 관리 로직으로 개선 예정
+        # TODO: 이 부분은 나중에 상태 관리 로직으로 개선 필요
         
         # ApprovalRequest 모의 객체 생성 (HITLManager와 일관된 인터페이스)
         mock_request = type('MockRequest', (), {
@@ -563,7 +492,7 @@ async def start_deep_research(request: ResearchStartRequest):
         connection_manager = getattr(hitl_manager, '_connection_manager', manager)
         hitl_manager.set_connection_manager(connection_manager)
         
-        # Deep Research 실행을 백그라운드 태스크로 수행하여 HTTP 연결을 오래 붙잡지 않음
+        # Deep Research 실행을 백그라운드 태스크로 수행
         asyncio.create_task(hitl_manager.execute_deep_research_handler(mock_request))
 
         return {
@@ -578,73 +507,6 @@ async def start_deep_research(request: ResearchStartRequest):
         return {"success": False, "error": f"연구 시작 중 오류가 발생했습니다: {str(e)}"}
 
 
-# Deep Research WebSocket 이벤트 테스트용 엔드포인트들  
-@app.post("/api/research/test/start")
-async def test_research_started(request: ResearchStartRequest):
-    """Deep Research 시작 이벤트 테스트"""
-    from datetime import datetime
-    import uuid
-    
-    start_data = {
-        "request_id": request.request_id or str(uuid.uuid4()),
-        "task_id": f"test_task_{str(uuid.uuid4())[:8]}",
-        "topic": request.topic or "테스트 연구 주제",
-        "agent_id": "test_research_agent",
-        "started_at": datetime.now(),
-        "expected_duration": "5분",
-        "stages": ["계획 승인", "데이터 검증", "최종 승인"]
-    }
-    
-    await manager.broadcast_research_started(start_data)
-    return {"success": True, "message": "research_started 이벤트 전송됨", "data": start_data}
-
-
-@app.post("/api/research/test/progress")
-async def test_research_progress(request: ResearchProgressRequest):
-    """Deep Research 진행상황 이벤트 테스트"""
-    from datetime import datetime
-    import uuid
-    
-    stage_names = ["계획 승인", "데이터 검증", "최종 승인"]
-    actions = ["계획 수립 중...", "데이터 수집 중...", "보고서 작성 중..."]
-    
-    progress_data = {
-        "request_id": str(uuid.uuid4()),
-        "task_id": f"test_task_{str(uuid.uuid4())[:8]}",
-        "stage": request.stage,
-        "stage_name": request.stage_name or stage_names[min(request.stage-1, len(stage_names)-1)],
-        "progress": request.progress,
-        "total_stages": 3,
-        "estimated_time": f"{10-request.stage*3}분 남음",
-        "current_action": request.current_action or actions[min(request.stage-1, len(actions)-1)],
-        "timestamp": datetime.now()
-    }
-    
-    await manager.broadcast_research_progress(progress_data)
-    return {"success": True, "message": "research_progress 이벤트 전송됨", "data": progress_data}
-
-
-@app.post("/api/research/test/complete")
-async def test_research_completed(request: ResearchCompleteRequest):
-    """Deep Research 완료 이벤트 테스트"""
-    from datetime import datetime
-    import uuid
-    
-    completion_data = {
-        "request_id": str(uuid.uuid4()),
-        "task_id": f"test_task_{str(uuid.uuid4())[:8]}",
-        "success": request.success,
-        "total_duration": "4분 32초",
-        "started_at": datetime.now().replace(minute=datetime.now().minute-5),
-        "completed_at": datetime.now(),
-        "final_status": "완료" if request.success else "실패",
-        "summary": request.summary or ("연구가 성공적으로 완료되었습니다." if request.success else "연구 중 오류가 발생했습니다.")
-    }
-    
-    await manager.broadcast_research_completed(completion_data)
-    return {"success": True, "message": "research_completed 이벤트 전송됨", "data": completion_data}
-
-
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket 연결"""
@@ -655,10 +517,6 @@ async def websocket_endpoint(websocket: WebSocket):
         approvals = await hitl_manager.get_pending_approvals(limit=50)
         # datetime을 문자열로 변환하여 JSON 직렬화 가능하게 함
         from datetime import datetime
-        def json_serializer(obj):
-            if isinstance(obj, datetime):
-                return obj.isoformat()
-            raise TypeError(f"Type {type(obj)} not serializable")
         
         data = []
         for req in approvals:
@@ -690,9 +548,3 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         logger.error(f"WebSocket 오류: {e}")
         manager.disconnect(websocket)
-
-
-# 개발용 서버 실행
-# if __name__ == "__main__":
-#     import uvicorn
-#     uvicorn.run(app, host="0.0.0.0", port=8090)

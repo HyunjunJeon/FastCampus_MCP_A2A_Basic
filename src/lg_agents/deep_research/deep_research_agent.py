@@ -29,7 +29,6 @@ LangGraph 기반 Deep Research Agent - 심층 연구 시스템
 - 설정 가능한 연구 파라미터
 """
 
-# 표준 라이브러리 임포트
 from src.utils.logging_config import get_logger  # 로깅 및 디버깅
 import time  # 성능 측정용 시간 함수
 from typing import Annotated, Optional, Literal  # 타입 힌트
@@ -48,31 +47,27 @@ from src.lg_agents.base.base_graph_state import BaseGraphState
 
 # LangChain 관련 임포트
 from langchain.chat_models import init_chat_model
-from langchain_core.messages import (  # LangChain 메시지 타입들
-    HumanMessage,  # 사용자 메시지
-    SystemMessage,  # 시스템 메시지
-    AIMessage,  # AI 응답 메시지
-    get_buffer_string,  # 메시지 버퍼를 문자열로 변환
+from langchain_core.messages import (
+    HumanMessage,
+    SystemMessage,
+    AIMessage,
+    get_buffer_string,
 )
 from langchain_core.language_models import BaseChatModel
-from langchain_core.runnables import RunnableConfig  # 실행 설정 클래스
+from langchain_core.runnables import RunnableConfig
 
 # LangGraph 관련 임포트
-from langgraph.graph import START, END, StateGraph  # 상태 그래프 구성 요소
-from langgraph.types import Command  # 노드 간 제어 흐름 명령
+from langgraph.graph import START, END, StateGraph
+from langgraph.types import Command
 
 from .shared import override_reducer
 from .supervisor_graph import build_supervisor_subgraph
-
-# 데이터 모델 및 타입 정의
-from pydantic import BaseModel, Field  # 데이터 유효성 검사 및 직렬화
- 
+from pydantic import BaseModel, Field 
 
 # 로깅 설정
 logger = get_logger(__name__)
 
 
-# ==================== 구조화된 출력 모델 정의 ====================
 class ClarifyWithUser(BaseModel):
     """
     사용자 질문 명확화를 위한 구조화된 출력 모델
@@ -126,7 +121,7 @@ async def _get_clarification_model(config: RunnableConfig) -> BaseChatModel:
     return (
         init_chat_model(
             model_provider="openai",
-            model=configurable.research_model,
+            model="gpt-4.1-mini",
             temperature=0,
         )
         .with_structured_output(ClarifyWithUser)
@@ -140,7 +135,8 @@ async def _check_clarification_needed(messages: list, model) -> ClarifyWithUser:
         messages=get_buffer_string(messages),
         date=get_today_str()
     )
-    return await model.ainvoke([HumanMessage(content=prompt)])
+    result = await model.ainvoke([HumanMessage(content=prompt)])
+    return result
 
 
 def _create_clarification_response(response: ClarifyWithUser) -> Command:
@@ -207,7 +203,7 @@ async def write_research_brief(
     model = (
         init_chat_model(
             model_provider="openai",
-            model=configurable.research_model,
+            model="gpt-4.1-mini",
             temperature=0,
         )
         .with_structured_output(ResearchQuestion)
@@ -240,14 +236,11 @@ async def write_research_brief(
                 "type": "override",
                 "value": [
                     SystemMessage(content=supervisor_prompt),
-                    HumanMessage(content=response.research_brief), # 유저의 원본 질문이 아님.
+                    HumanMessage(content=response.research_brief), # 유저의 원본 질문이 아님을 주의
                 ],
             },
         },
     )
-
-
-"""Supervisor/Researcher 서브그래프 구현은 별도 모듈로 이동"""
 
 
 async def final_report_generation(state: AgentState, config: RunnableConfig):
@@ -259,19 +252,20 @@ async def final_report_generation(state: AgentState, config: RunnableConfig):
     logger.info("Starting final_report_generation")
 
     notes = state.get("notes", [])
+    notes_count = len(notes) if isinstance(notes, list) else 0
+    if notes_count == 0:
+        logger.warning("final_report_generation invoked with empty notes (0)")
     cleared_state = {"notes": {"type": "override", "value": []}}
-    configurable = ResearchConfig.from_runnable_config(config)
 
     writer_model = init_chat_model(
         model_provider="openai",
-        model=configurable.final_report_model,
+        model="gpt-4.1",
         temperature=0,
     )
 
     findings = "\n".join(notes)
     messages = state.get("messages", [])
 
-    # 프롬프트 모듈에서 임포트한 템플릿 사용
     final_report_prompt = final_report_generation_prompt.format(
         research_brief=state.get("research_brief", ""),
         messages=get_buffer_string(messages),

@@ -139,67 +139,28 @@ async def run_a2a_deep_research(
     start_time = datetime.now()
 
     try:
-        print("📥 A2A 딥리서치 에이전트들 임포트 중...")
-        # 필요 모듈 로드
-        from a2a.types import AgentCard, AgentCapabilities, AgentSkill
-        from src.a2a_integration.a2a_lg_embedded_server_manager import (
-            start_embedded_graph_server,
-        )
-        from src.lg_agents.deep_research.deep_research_agent import (
-            deep_research_graph,
-        )
         from src.a2a_integration.a2a_lg_client_utils import A2AClientManager
-
-        print("✅ A2A 딥리서치 에이전트들 임포트 성공")
-        print("🔧 A2A 딥리서치 에이전트들 초기화 중...")
 
         # 외부에서 엔드포인트가 주어지면 그대로 사용 (이미 띄워진 서버)
         if endpoints and isinstance(endpoints, dict) and endpoints.get("deep_research"):
             base_url = endpoints["deep_research"]
-            print(f"🔗 외부 제공 A2A 엔드포인트 사용: {base_url}")
+            logger.info(f"🔗 외부 제공 A2A 엔드포인트 사용(DeepResearchA2AGraph): {base_url}")
+            
+            graph_input = {
+                "messages": [
+                    {"role": "human", "content": query},
+                ],
+            }
+            
+            logger.info(f"DeepResearchGraph 스펙에 맞는 데이터 Input 을 위해 전처리: {graph_input}")
             async with A2AClientManager(base_url=base_url) as client:
-                response_text = await client.send_query(query)
-        else:
-            # 임베디드 A2A 서버를 시작해 해당 그래프를 래핑
-            host = "0.0.0.0"
-            port = 8000
-            skills = [
-                AgentSkill(
-                    id="deep_research",
-                    name="Deep Research",
-                    description="Deep research pipeline (LangGraph wrapped via A2A)",
-                    tags=["research", "pipeline"],
-                    examples=["교육에 미치는 AI의 영향 분석"],
-                )
-            ]
-
-            agent_card = AgentCard(
-                name="Deep Research Agent",
-                description="Deep research pipeline wrapped by A2A",
-                url=f"http://{host}:{port}",
-                capabilities=AgentCapabilities(
-                    streaming=True,
-                    push_notifications=True,
-                    state_transition_history=True,
-                ),
-                default_input_modes=["text"],
-                default_output_modes=["text"],
-                skills=skills,
-                version="1.0.0",
-            )
-
-            async with start_embedded_graph_server(
-                graph=deep_research_graph, agent_card=agent_card, host=host, port=port
-            ) as server_info:
-                base_url = server_info["base_url"]
-                print(f"✅ 임베디드 A2A 서버 시작: {base_url}")
-
-                async with A2AClientManager(base_url=base_url) as client:
-                    response_text = await client.send_query(query)
+                response_text = await client.send_data_merged(graph_input)
 
         end_time = datetime.now()
         execution_time = (end_time - start_time).total_seconds()
 
+        
+        logger.info(f"A2A 딥리서치 결과: {response_text}")
         result = {
             "research_brief": "",
             "raw_notes_count": 0,
@@ -308,10 +269,8 @@ async def check_servers_basic():
     return {"mcp_servers": mcp_running}
 
 
-async def run_comparison(endpoints: dict[str, str] | None = None):
+async def run_comparison(query: str, endpoints: dict[str, str] | None = None, langgraph_run: bool = True, a2a_run: bool = True):
     """LangGraph 딥리서치 vs A2A 딥리서치 구현체 비교"""
-
-    query = "AI가 교육에 미치는 영향을 분석해주세요"
 
     print("🎯 LangGraph 딥리서치 vs A2A 딥리서치 구현체 비교")
     print("=" * 80)
@@ -337,15 +296,16 @@ async def run_comparison(endpoints: dict[str, str] | None = None):
 
     # 전체 실험 시작 시간
     total_start = datetime.now()
+    
+    if langgraph_run:
+        # 1. LangGraph 딥리서치 실행
+        langgraph_result = await run_langgraph_deep_research(query)
+        # 잠시 대기 (시스템 간 격리를 위함)
+        await asyncio.sleep(2)
 
-    # 1. LangGraph 딥리서치 실행
-    langgraph_result = await run_langgraph_deep_research(query)
-
-    # 잠시 대기 (시스템 간 격리를 위함)
-    await asyncio.sleep(2)
-
-    # 2. A2A 딥리서치 실행
-    a2a_result = await run_a2a_deep_research(query, endpoints=endpoints)
+    if a2a_run:
+        # 2. A2A 딥리서치 실행
+        a2a_result = await run_a2a_deep_research(query, endpoints=endpoints)
 
     # 전체 실험 완료
     total_end = datetime.now()
@@ -360,36 +320,37 @@ async def run_comparison(endpoints: dict[str, str] | None = None):
     print()
 
     # LangGraph 딥리서치 결과
-    print("🔴 LangGraph 딥리서치:")
-    if langgraph_result["success"]:
-        print("   ✅ 성공")
-        print(f"   ⏱️  실행시간: {langgraph_result['execution_time']:.2f}초")
-        print(f"   🏗️  아키텍처: {langgraph_result['architecture']}")
-        print(
-            f"   📄 결과 크기: {len(langgraph_result['result'].get('final_report', ''))} 문자"
-        )
-    else:
-        print(f"   ❌ 실패: {langgraph_result['error']}")
-        print(f"   ⏱️  실패까지 시간: {langgraph_result.get('execution_time', 0):.2f}초")
-
-    print()
+    if langgraph_run:
+        print("🔴 LangGraph 딥리서치:")
+        if langgraph_result.get("success", False):
+            print("   ✅ 성공")
+            print(f"   ⏱️  실행시간: {langgraph_result['execution_time']:.2f}초")
+            print(f"   🏗️  아키텍처: {langgraph_result['architecture']}")
+            print(
+                f"   📄 결과 크기: {len(langgraph_result['result'].get('final_report', ''))} 문자"
+            )
+        else:
+            print(f"   ❌ 실패: {langgraph_result['error']}")
+            print(f"   ⏱️  실패까지 시간: {langgraph_result.get('execution_time', 0):.2f}초")
 
     # A2A 딥리서치 결과
-    print("🔵 A2A 딥리서치:")
-    if a2a_result["success"]:
-        print("   ✅ 성공")
-        print(f"   ⏱️  실행시간: {a2a_result['execution_time']:.2f}초")
-        print(f"   🏗️  아키텍처: {a2a_result['architecture']}")
-        print(
-            f"   📄 결과 크기: {len(a2a_result['result'].get('final_report', ''))} 문자"
-        )
-    else:
-        print(f"   ❌ 실패: {a2a_result['error']}")
-        print(f"   ⏱️  실패까지 시간: {a2a_result.get('execution_time', 0):.2f}초")
+    if a2a_run:
+        print("\n🔵 A2A 딥리서치:")
+        if a2a_result.get("success", False):
+            print("   ✅ 성공")
+            print(f"   ⏱️  실행시간: {a2a_result['execution_time']:.2f}초")
+            print(f"   🏗️  아키텍처: {a2a_result['architecture']}")
+            print(
+                f"   📄 결과 크기: {len(a2a_result['result'].get('final_report', ''))} 문자"
+            )
+        else:
+            print(f"   ❌ 실패: {a2a_result['error']}")
+            print(f"   ⏱️  실패까지 시간: {a2a_result.get('execution_time', 0):.2f}초")
 
     # 실패 원인 분석
-    if not langgraph_result["success"] or not a2a_result["success"]:
-        print("\n🔍 실패 원인 분석:")
+    if langgraph_run or a2a_run:
+        if not langgraph_result.get("success", False) and not a2a_result.get("success", False):
+            print("\n🔍 실패 원인 분석:")
 
         if not server_status["mcp_servers"]:
             print("   📡 MCP 서버가 실행되지 않음")
@@ -400,26 +361,6 @@ async def run_comparison(endpoints: dict[str, str] | None = None):
             print(
                 "      → 테스트 용도로는 임베디드 서버 사용 권장: start_embedded_graph_server(...)"
             )
-
-        if langgraph_result["success"] and not a2a_result["success"]:
-            print("   🎯 LangGraph 성공, A2A 실패:")
-            print("      → A2A는 독립적 에이전트 구조로 복잡성 증가")
-            print("      → LangGraph는 중앙 집중식으로 더 안정적")
-
-    # 성공한 경우, 성능 비교만 출력
-    if langgraph_result["success"] and a2a_result["success"]:
-        print("\n📈 성능 분석:")
-        langgraph_time = langgraph_result["execution_time"]
-        a2a_time = a2a_result["execution_time"]
-
-        if langgraph_time > a2a_time:
-            improvement = ((langgraph_time - a2a_time) / langgraph_time) * 100
-            print(f"   🚀 A2A가 {improvement:.1f}% 빠름")
-            print(f"      LangGraph: {langgraph_time:.2f}초 → A2A: {a2a_time:.2f}초")
-        else:
-            overhead = ((a2a_time - langgraph_time) / langgraph_time) * 100
-            print(f"   📡 A2A 오버헤드: {overhead:.1f}%")
-            print(f"      LangGraph: {langgraph_time:.2f}초 → A2A: {a2a_time:.2f}초")
 
     # 결과를 JSON으로 저장
     comparison_result = {
@@ -447,21 +388,3 @@ async def run_comparison(endpoints: dict[str, str] | None = None):
     # 호출자에서 경로를 알 수 있도록 반환 데이터에 포함
     comparison_result["output_path"] = str(output_path)
     return comparison_result
-
-
-if __name__ == "__main__":
-    print("🚀 LangGraph 딥리서치 vs A2A 딥리서치 구현체 비교")
-    print("복잡한 State 관리 vs 단순한 Context 관리\n")
-
-    try:
-        result = asyncio.run(run_comparison())
-        print("\n✅ 모든 실험이 완료되었습니다!")
-
-    except KeyboardInterrupt:
-        print("\n⏹️  사용자에 의해 중단되었습니다.")
-
-    except Exception as e:
-        print(f"\n💥 예상치 못한 오류: {e}")
-        import traceback
-
-        traceback.print_exc()

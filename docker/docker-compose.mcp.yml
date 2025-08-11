@@ -18,7 +18,7 @@ services:
       - TAVILY_API_KEY=${TAVILY_API_KEY:-}
     env_file:
       - ../.env
-    command: ["uv", "run", "python", "src/mcp_servers/tavily_search/server.py"]
+    command: ["mcp_servers.tavily_search.server:create_app", "--host", "0.0.0.0", "--port", "3001", "--factory", "--workers", "6"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
       interval: 30s
@@ -43,7 +43,7 @@ services:
       - LOG_LEVEL=info
     env_file:
       - ../.env
-    command: ["uv", "run", "python", "src/mcp_servers/arxiv_search/server.py"]
+    command: ["mcp_servers.arxiv_search.server:create_app", "--host", "0.0.0.0", "--port", "3000", "--factory", "--workers", "6"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
@@ -69,7 +69,7 @@ services:
       - SERPER_API_KEY=${SERPER_API_KEY:-}
     env_file:
       - ../.env
-    command: ["uv", "run", "python", "src/mcp_servers/serper_search/server.py"]
+    command: ["mcp_servers.serper_search.server:create_app", "--host", "0.0.0.0", "--port", "3002", "--factory", "--workers", "6"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
       interval: 30s

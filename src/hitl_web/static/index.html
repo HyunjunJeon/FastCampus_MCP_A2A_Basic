@@ -2187,48 +2187,17 @@
                         onClose={() => setShowStartResearchModal(false)}
                         onSubmit={handleStartResearch}
                     />
-                    
-                    {/* 연구 시작 플로팅 버튼 */}
-                    <button
-                        onClick={() => setShowStartResearchModal(true)}
-                        style={{
-                            position: 'fixed',
-                            bottom: '90px',
-                            right: '20px',
-                            width: '60px',
-                            height: '60px',
-                            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '50%',
-                            cursor: 'pointer',
-                            boxShadow: '0 4px 20px rgba(16, 185, 129, 0.4)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: '1.5rem',
-                            zIndex: 999,
-                            transition: 'all 0.3s ease',
-                            animation: !researchStatus ? 'pulse 2s ease-in-out infinite' : 'none'
-                        }}
-                        onMouseEnter={(e) => {
-                            e.target.style.transform = 'scale(1.1)';
-                            e.target.style.boxShadow = '0 6px 30px rgba(16, 185, 129, 0.6)';
-                        }}
-                        onMouseLeave={(e) => {
-                            e.target.style.transform = 'scale(1)';
-                            e.target.style.boxShadow = '0 4px 20px rgba(16, 185, 129, 0.4)';
-                        }}
-                        title="새 연구 시작"
-                        disabled={researchStatus && researchStatus.type !== 'research_completed'}
-                    >
-                        🔬
-                    </button>
                 </div>
             );
         };
         
-        ReactDOM.render(<App />, document.getElementById('root'));
+        const container = document.getElementById('root');
+        if (ReactDOM.createRoot) {
+            const root = ReactDOM.createRoot(container);
+            root.render(<App />);
+        } else {
+            ReactDOM.render(<App />, container);
+        }
     </script>
 </body>
 </html>

@@ -2,6 +2,8 @@
 
 from typing import Any, Literal
 from dotenv import load_dotenv
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from mcp_servers.base_mcp_server import BaseMCPServer
 from mcp_servers.tavily_search.tavily_search_client import TavilySearchAPI
@@ -217,7 +219,6 @@ class TavilySearchServer(BaseMCPServer):
                 # 에러 발생 시 표준화된 에러 응답 반환
                 return await self.handle_error("search_finance", e, query=query)
 
-# 서버 인스턴스 생성 및 실행
-if __name__ == "__main__":
+def create_app() -> Any:
     server = TavilySearchServer()
-    server.run()
+    return server.create_app()

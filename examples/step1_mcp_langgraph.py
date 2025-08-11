@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # ruff: noqa: E402
 """
 Step 1: MCP Server를 LangGraph Agent의 도구로 통합하기

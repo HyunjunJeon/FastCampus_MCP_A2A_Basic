@@ -4,7 +4,6 @@
 
 ### Files
 
-- [README.md](README.md): 예제 실행 안내 및 시나리오 설명.
 - [compare_systems.py](compare_systems.py): LangGraph vs A2A 시스템 비교 실행.
 - [deep_research_a2a_client_comparison.py](deep_research_a2a_client_comparison.py): A2A 클라이언트 비교 실험.
 - [step1_mcp_langgraph.py](step1_mcp_langgraph.py): Step1 데모( LangGraph+MCP 연동 ).

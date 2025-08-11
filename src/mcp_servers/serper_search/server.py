@@ -4,6 +4,8 @@ from typing import Any
 
 from mcp_servers.base_mcp_server import BaseMCPServer
 from mcp_servers.serper_search.serper_dev_client import SerperClient
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 
 class SerperSearchServer(BaseMCPServer):
@@ -250,8 +252,6 @@ class SerperSearchServer(BaseMCPServer):
                     query=query
                 )
 
-
-# 서버 인스턴스 생성 및 실행
-if __name__ == "__main__":
+def create_app() -> Any:
     server = SerperSearchServer()
-    server.run()
+    return server.create_app()

@@ -4,6 +4,8 @@ from typing import Any
 
 from mcp_servers.base_mcp_server import BaseMCPServer
 from mcp_servers.arxiv_search.arxiv_client import ArxivClient
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 
 class ArxivSearchServer(BaseMCPServer):
@@ -190,7 +192,6 @@ class ArxivSearchServer(BaseMCPServer):
                 )
 
 
-# 서버 인스턴스 생성 및 실행
-if __name__ == "__main__":
+def create_app() -> Any:
     server = ArxivSearchServer()
-    server.run()
+    return server.create_app()

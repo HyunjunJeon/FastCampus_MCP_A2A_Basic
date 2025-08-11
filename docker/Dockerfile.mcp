@@ -12,14 +12,16 @@ RUN apt-get update && apt-get install -y \
 # UV 패키지 매니저 설치
 RUN pip install uv
 
-# 의존성 파일 복사 및 설치
-COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen
+# 의존성 및 프로젝트 파일 복사 (README.md는 .dockerignore에 의해 제외되므로 생략)
+COPY pyproject.toml uv.lock LICENSE ./
 
-# 프로젝트 파일 복사
+# 프로젝트 소스 먼저 복사 (uv가 프로젝트를 설치할 때 src 레이아웃 필요)
 COPY src/ ./src/
 
-# 개발 모드로 패키지 설치 (src 레이아웃 인식)
+# 잠금 파일 기반 동기화 (프로젝트 포함)
+RUN uv sync --frozen
+
+# 개발 모드로 패키지 설치 (중복 설치이지만 안전; 필요한 경우 캐시에 의해 빠르게 처리)
 RUN uv pip install -e .
 
 # 환경변수 설정
@@ -34,5 +36,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 # 각 서버별 포트 노출 (docker-compose에서 설정)
 EXPOSE 3000 3001 3002
 
-# 기본 실행 명령 (docker-compose에서 오버라이드됨)
-CMD ["echo", "Please specify which MCP server to run"]
+# 기본 실행: uvicorn을 import-string + --factory로 실행
+# docker-compose에서는 command로 APP과 포트만 덮어씁니다.
+ENTRYPOINT ["uv", "run", "uvicorn"]
+CMD ["mcp_servers.tavily_search.server:create_app", "--host", "0.0.0.0", "--port", "3001", "--factory"]

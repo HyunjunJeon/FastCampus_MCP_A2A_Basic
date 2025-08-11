@@ -67,7 +67,3 @@
 - HITL 사양(프로젝트 내부): `steps/hitl_integration_spec.md`
 - A2A SDK: `docs/a2a-python_0.3.0.txt`
 - WebSocket/REST: FastAPI/Starlette 공식 문서
-
-## 마무리
-
-이 단계로 “사용 전 반드시 사람 승인”이라는 안전 장치가 추가되었습니다. 이후에는 운영 품질(알림 채널, 감사 로그, 메트릭)과 보안(권한, 마스킹)을 강화해 프로덕션 성숙도를 높이세요.
