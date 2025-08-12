@@ -15,8 +15,10 @@ graph TD
       Store[Redis-based ApprovalStorage]
     end
 
-    subgraph DeepResearch
-      DR[DeepResearch Agent (A2A)]
+    subgraph A2A Agents
+      DR[DeepResearch Agent (8090)]
+      RES[Researcher Agent (8091)]
+      SUP[Supervisor Agent (8092)]
     end
 
     Client[HITL Viewer]

@@ -39,8 +39,7 @@
 
 ### 4) 데모 실행
 
-- `./scripts/run_step4.sh` (Redis 기동 → Web/API → A2A 서버 자동 기동)
-- 또는 `python examples/step4_hitl_demo.py`
+- `python examples/step4_hitl_demo.py`
 - 대시보드: <http://localhost:8000> (WS: `ws://localhost:8000/ws`)
 - HITL A2A 서버: <http://localhost:8090>
 

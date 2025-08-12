@@ -7,8 +7,8 @@
 - [a2a_spec.md](a2a_spec.md): A2A 프로토콜 개요 및 스펙 요약.
 - [a2a-python_0.3.0.txt](a2a-python_0.3.0.txt): A2A Python SDK 0.3.0 레퍼런스 발췌.
 - [a2a-samples_0.3.0.txt](a2a-samples_0.3.0.txt): A2A 샘플 프로젝트 요약.
-- [fastmcp-llms_2.10.6.txt](fastmcp-llms_2.10.6.txt): FastMCP LLMs 문서 (요약).
-- [fastmcp-llms-full_2.10.6.txt](fastmcp-llms-full_2.10.6.txt): FastMCP LLMs 전체 문서.
+- [fastmcp-llms_2.11.0.txt](fastmcp-llms_2.11.0.txt): FastMCP LLMs 문서 (요약).
+- [fastmcp-llms-full_2.11.0.txt](fastmcp-llms-full_2.11.0.txt): FastMCP LLMs 전체 문서.
 - [langchain-llms.txt](langchain-llms.txt): LangChain LLMs 관련 문서.
 - [langchain-mcp-adapters.txt](langchain-mcp-adapters.txt): LangChain MCP 어댑터 개요.
 - [langgraph-llms_0.6.2.txt](langgraph-llms_0.6.2.txt): LangGraph LLMs 문서 (요약).

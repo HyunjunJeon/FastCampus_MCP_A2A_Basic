@@ -5,7 +5,7 @@
 ```mermaid
 sequenceDiagram
     autonumber
-    participant DR as DeepResearch Agent (A2A)
+    participant DR as DeepResearch Agent (8090)
     participant HITL as HITL Manager
     participant UI as Web UI (WS)
     participant Human

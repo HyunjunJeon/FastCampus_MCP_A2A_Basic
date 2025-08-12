@@ -31,12 +31,11 @@ FastCampus 온라인강의 “MCP 와 A2A 로 개발하는 Multi Agent”(Part2 
 - Docker / Docker Compose (MCP 서버 및 Redis 실행용)
 
 권장 라이브러리/버전(정확한 버전은 `pyproject.toml` 참고):
-(2025.08.08 기준 최신 버전)
 
-- LangGraph v0.6.4
-- FastMCP v2.11.2
-- LangChain MCP Adapters v0.1.9
-- a2a-sdk v0.3.0
+- LangGraph ≥ 0.6.2
+- FastMCP ≥ 2.11.0
+- LangChain MCP Adapters ≥ 0.1.9
+- a2a-sdk ≥ 0.3.0
 
 참고 문서 모음: `docs/`
 
@@ -122,15 +121,7 @@ python examples/step2_langgraph_a2a_client.py
 
 - 목표: 동일 주제로 두 방식을 비교 실행하고 결과 저장
 
-스크립트(권장):
-
-```bash
-./scripts/run_step3.sh           # MCP 도커 자동 기동 후 비교 실행
-./scripts/run_step3.sh --no-docker    # MCP가 이미 떠있다면
-./scripts/run_step3.sh --down-after   # 실행 후 도커 내려가기
-```
-
-직접 실행:
+실행:
 
 ```bash
 python examples/step3_multiagent_systems.py
@@ -142,10 +133,6 @@ python examples/step3_multiagent_systems.py
 
 - 목표: 승인/피드백 루프가 포함된 Deep Research + 웹 대시보드 + A2A 서버
 
-```bash
-./scripts/run_step4.sh
-```
-
 동작 요약
 
 - Redis 자동 기동(docker)
@@ -154,7 +141,7 @@ python examples/step3_multiagent_systems.py
   - Agent Card(JSON): `<http://localhost:8090/.well-known/agent-card.json>`
   - Health: `<http://localhost:8090/health>`
 
-직접 실행(대체):
+실행:
 
 ```bash
 python examples/step4_hitl_demo.py
@@ -168,8 +155,8 @@ python examples/step4_hitl_demo.py
 
 - MCP: 3000(arXiv), 3001(Tavily), 3002(Serper)
 - Redis Commander: 8081
-- A2A(임베디드): 8000(Step2), 8010(Step3)
-- HITL Web: 8000, HITL A2A: 8090 (Step4)
+- A2A(임베디드): 8000(Step2)
+- HITL Web: 8000, HITL A2A Agents: 8090(Deep), 8091(Researcher), 8092(Supervisor) (Step4)
 
 ---
 
@@ -181,15 +168,7 @@ python examples/step4_hitl_demo.py
 uv run pytest -q
 ```
 
-UI E2E (Playwright, Step 4):
-
-```bash
-uv run pytest tests/test_e2e_step4_playwright.py -q
-```
-
----
-
-## 문서(학습 가이드)
+## 문서
 
 - 단계별 가이드: [steps/code_index.md](steps/code_index.md)
 - 다이어그램: [docs/diagrams/code_index.md](docs/diagrams/code_index.md)

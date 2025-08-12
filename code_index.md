@@ -7,9 +7,6 @@
 ```bash
 fc_mcp_a2a/
 ├─ Dockerfile
-├─ docker-start.sh
-├─ docker-start.bat
-├─ Makefile
 ├─ pyproject.toml
 ├─ README.md
 ├─ LICENSE
@@ -56,9 +53,7 @@ fc_mcp_a2a/
 │  └─ step4_hitl_demo.py
 ├─ reports/
 │  └─ comparison_results_YYYYMMDD_HHMMSS.json
-├─ scripts/
-│  ├─ run_step3.sh
-│  └─ run_step3.ps1
+├─ logs/
 ├─ steps/
 │  ├─ hitl_integration_spec.md
 │  ├─ step1.md
@@ -163,7 +158,7 @@ docs/
 
 - a2a_spec.md: A2A 프로토콜 개요 및 스펙 요약.
 - a2a-python_0.3.0.txt / a2a-samples_0.3.0.txt: A2A 0.3.0 레퍼런스/샘플.
-- fastmcp-llms*_2.10.6.txt: fastmcp LLM 관련 문서 버전별 사양.
+- fastmcp-llms*_2.11.0.txt: fastmcp LLM 관련 문서 버전별 사양.
 - langchain-llms.txt / langchain-mcp-adapters.txt: LangChain LLM/MCP 어댑터 정리.
 - langgraph-llms*_0.6.2.txt: LangGraph LLMs 관련 문서.
 - lg-deep-research-example.txt: LangGraph Deep Research 예시 참고.
@@ -172,7 +167,7 @@ docs/
 
 examples/
 
-- README.md: 예제 실행 안내 및 시나리오 설명.
+- code_index.md: 예제 실행 안내 및 시나리오 설명.
 - compare_systems.py: LangGraph vs A2A 비교 실행 스크립트.
 - deep_research_a2a_client_comparison.py: A2A 클라이언트 비교 실험.
 - step1_mcp_langgraph.py: Step1 데모( LangGraph+MCP 연동 ).
@@ -250,7 +245,6 @@ src/hitl_web/ (see module index: [src/hitl_web/code_index.md](src/hitl_web/code_
 src/lg_agents/ (see module index: [src/lg_agents/code_index.md](src/lg_agents/code_index.md))
 
 - __init__.py: 패키지 초기화.
-- research_agent.py: A2A 스타일 연구 에이전트(승인 단계 포함) 구현.
 - code_index.md: 에이전트 전반 인덱스.
 
 src/lg_agents/base/ (see module index: [src/lg_agents/base/code_index.md](src/lg_agents/base/code_index.md))
@@ -264,6 +258,7 @@ src/lg_agents/deep_research/ (see module index: [src/lg_agents/deep_research/cod
 
 - __init__.py: 패키지 초기화.
 - deep_research_agent.py: Deep Research 주 그래프(명확화/계획/연구/보고서).
+- deep_research_agent_a2a.py: Supervisor 호출을 A2A로 감싼 그래프 진입점.
 - hitl_nodes.py: 최종 승인/개정 루프 노드/상태(공용, A2A 그래프에서 재사용).
 - prompts.py: 프롬프트/날짜 유틸.
 - researcher_graph.py: MCP 도구 기반 Researcher 서브그래프.

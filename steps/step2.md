@@ -85,7 +85,7 @@
 
 ## 참고 문서(필독)
 
-- A2A Spec: [docs/a2a-spec.md](../docs/a2a_spec.md)
+- A2A Spec: [docs/a2a_spec.md](../docs/a2a_spec.md)
 - A2A SDK: [docs/a2a-python_0.3.0.txt](../docs/a2a-python_0.3.0.txt)
 - 샘플: [docs/a2a-samples_0.3.0.txt](../docs/a2a-samples_0.3.0.txt)
 - LangGraph: [docs/langgraph-llms_0.6.2.txt](../docs/langgraph-llms_0.6.2.txt)

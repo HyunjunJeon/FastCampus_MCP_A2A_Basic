@@ -639,7 +639,7 @@ except HITLRejectionError as e:
 ## 참고 자료
 
 - A2A SDK Python 문서: `docs/a2a-python_0.3.0.txt`
-- 실제 구현 코드: `src/hitl/`, `src/a2a_orchestrator/*.py`
+- 실제 구현 코드: `src/hitl/`, `src/a2a_integration/*`, `src/lg_agents/deep_research/*`
 - 데모 실행: `examples/step4_hitl_demo.py`
 
 ## 개발된 기능
