@@ -13,7 +13,8 @@
 - 루트 `.env` 구성: `OPENAI_API_KEY`, `TAVILY_API_KEY` (필수)
 
 ```bash
-cp .env.example .env
+# macOS/Linux
+cp env.example .env  # env.example이 없으면 수동으로 .env를 생성해 키를 채워주세요
 ```
 
 - 의존성 설치(이미 설치되어있을 수 있음)
@@ -30,7 +31,7 @@ uv venv && uv sync
 
 ## 2) MCP 서버 기동
 
-- 권장 스크립트
+- 권장 스크립트 (루트 `.env`를 자동 로드)
 
 ```bash
 ./docker/mcp_docker.sh up
@@ -45,6 +46,7 @@ curl -fsSL http://localhost:3001/health | cat
 ```
 
 포트 맵: 3001(Tavily), 3000(arXiv), 3002(Serper). 모든 서비스 정의는 `docker/docker-compose.mcp.yml` 참고.
+예제 코드(`src/lg_agents/simple/simple_lg_agent_with_mcp.py`)는 기본적으로 Tavily MCP(3001)를 사용합니다.
 
 ## 2) 예제 실행(에이전트가 MCP 도구 사용 — get_tools → bind_tools)
 
@@ -83,7 +85,7 @@ python examples/step1_mcp_langgraph.py
 
 ## 참고 문서(필독)
 
-- FastMCP: [docs/fastmcp-llms_2.10.6.txt](../docs/fastmcp-llms_2.10.6.txt), [docs/fastmcp-llms-full_2.10.6.txt](../docs/fastmcp-llms-full_2.10.6.txt)
+- FastMCP: [docs/fastmcp-llms_2.11.0.txt](../docs/fastmcp-llms_2.11.0.txt), [docs/fastmcp-llms-full_2.11.0.txt](../docs/fastmcp-llms-full_2.11.0.txt)
 - LangGraph ReAct Agent: [docs/langgraph-llms_0.6.2.txt](../docs/langgraph-llms_0.6.2.txt), [docs/langgraph-llms-full_0.6.2.txt](../docs/langgraph-llms-full_0.6.2.txt)
 - LangChain MCP Adapters: [docs/langchain-mcp-adapters.txt](../docs/langchain-mcp-adapters.txt)
 

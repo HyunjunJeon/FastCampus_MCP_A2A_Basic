@@ -25,4 +25,4 @@
 - [step4_sequence.md](step4_sequence.md)
 - [step4_state.md](step4_state.md)
 - [step4_architecture.md](step4_architecture.md)
-  - DeepResearch(HITL) A2A: 8090, Researcher A2A: 8091, Supervisor A2A: 8092
+  - DeepResearch(HITL) A2A: 8090, Researcher A2A: 8091, Supervisor A2A: 8092, HITL Web/API: 8000

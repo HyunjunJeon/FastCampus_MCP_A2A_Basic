@@ -5,12 +5,14 @@
 ```mermaid
 sequenceDiagram
     autonumber
-    participant Client as A2A Client
-    participant Server as A2A Server (Starlette)
+    participant Client as A2A Client (A2AClientManager)
+    participant Server as A2A Server (Starlette / Embedded)
     participant Exec as LangGraphWrappedA2AExecutor
     participant Graph as LangGraph Graph
 
-    Client->>Server: POST /tasks (prompt)
+    Client->>Server: GET /.well-known/agent-card.json
+    Server-->>Client: AgentCard
+    Client->>Server: POST /tasks (text | DataPart)
     Server->>Exec: execute()
     Exec->>Graph: astream()
     loop stream deltas

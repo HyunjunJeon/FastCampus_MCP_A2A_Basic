@@ -186,6 +186,7 @@ scripts/
 steps/
 
 - step1.md / step2.md / step3.md / step4.md: 단계별 구현 가이드.
+- agentic_code_guide.md: Step 1→4 완주용 실행/연동 가이드.
 - hitl_integration_spec.md: HITL 통합 상세 설계.
 
 tests/

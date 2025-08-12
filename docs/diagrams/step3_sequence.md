@@ -5,20 +5,18 @@
 ```mermaid
 sequenceDiagram
     autonumber
-    participant Sup as Supervisor
-    participant Plan as Planner
-    participant Res as Researcher
-    participant W as Writer
-    participant E as Evaluator
+    actor U as User
+    participant LG as LangGraph (MCP-only)
+    participant A2AD as Deep/HITL A2A (8090)
+    participant A2AR as Researcher A2A (8091)
+    participant A2AS as Supervisor A2A (8092)
 
-    Sup->>Plan: define plan
-    Plan-->>Sup: plan
-    Sup->>Res: research tasks
-    Res-->>Sup: findings
-    Sup->>W: draft report
-    W-->>Sup: report
-    Sup->>E: review
-    E-->>Sup: feedback
-    Sup-->>W: revise (if needed)
-    W-->>Sup: final report
+    U->>LG: Query (same topic)
+    LG-->>U: Final Report
+
+    U->>A2AS: Query (same topic)
+    A2AS->>A2AR: Delegate research
+    A2AR-->>A2AS: Findings
+    A2AS->>A2AD: Orchestrate final report
+    A2AD-->>U: Final Report (A2A)
 ```

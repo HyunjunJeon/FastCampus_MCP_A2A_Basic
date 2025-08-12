@@ -38,6 +38,7 @@
 
 - Step 2의 `to_a2a_starlette_server` + `LangGraphWrappedA2AExecutor`로 각 역할을 “독립 A2A Agent”로 노출함.
 - 상태(State) 관점: A2A는 에이전트 단위 독립 상태 + 표준 메시징이므로, LangGraph 내부의 공유 State를 얕게 가져가거나 분리 가능
+- 본 Step3 예제의 임베디드 A2A 서버 포트: 8092(DeepResearch), 8091(Researcher), 8090(Supervisor)
 
 ## 검증 기준
 
@@ -66,7 +67,7 @@
 ## 참고 문서(필독)
 
 - LangGraph: [docs/langgraph-llms_0.6.2.txt](../docs/langgraph-llms_0.6.2.txt)
-- MCP: [docs/fastmcp-llms_2.10.6.txt](../docs/fastmcp-llms_2.10.6.txt)
+- MCP: [docs/fastmcp-llms_2.11.0.txt](../docs/fastmcp-llms_2.11.0.txt)
 - A2A: [docs/a2a-python_0.3.0.txt](../docs/a2a-python_0.3.0.txt)
 
 ## 다음 단계로

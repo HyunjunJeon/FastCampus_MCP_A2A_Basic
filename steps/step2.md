@@ -36,16 +36,18 @@
 참고:
 
 - `LangGraphWrappedA2AExecutor`에서 `astream` 루프 → 변경된 텍스트만 산출, `TaskUpdater`로 상태/아티팩트 갱신
+- 인터럽트 발생 시 `TaskState.input_required`와 메시지를 전송하여 재개(resume) 흐름을 지원합니다.
 
 ### 2) A2A 서버 빌더 유틸리티
 
 파일: `src/a2a_integration/a2a_lg_utils.py`
 
-- 목표: “어떤 그래프(CompiledStateGraph)든” `AgentCard`만 주면 A2A 서버(A2AStarlette)로 노출
+- 목표: “어떤 그래프(CompiledStateGraph)든” `AgentCard`만 주면 A2A 서버(A2AStarletteApplication)로 노출
 
 - 함수 구성:
   - `create_agent_card(...)`: streaming/push 등 Capabilities 포함 - A2A 표준 AgentCard 생성
   - `to_a2a_starlette_server(graph, agent_card, result_extractor)`: Executor + DefaultRequestHandler + A2AStarletteApplication 조립
+  - `to_a2a_run_uvicorn(server_app, host, port)`: Starlette 앱에 `/health` 추가 후 uvicorn으로 실행 (임베디드가 필요 없을 때)
 
 ### 3) 임베디드 서버 컨텍스트 매니저(개발 및 테스트 / 예제용)
 
@@ -54,6 +56,7 @@
 - 목적: 테스트/예제에서 포트 자동 관리, health 체크, 기동/정리 일괄 처리
 
 - 사용 예: `async with start_embedded_graph_server(graph, agent_card, host, port) as info:`
+  - 임베디드 서버는 `/health` 와 `/.well-known/agent-card.json`(A2A 표준)을 제공합니다.
 
 ### 4) 예제로 통합 검증
 

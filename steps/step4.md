@@ -41,7 +41,7 @@
 
 - `python examples/step4_hitl_demo.py`
 - 대시보드: <http://localhost:8000> (WS: `ws://localhost:8000/ws`)
-- HITL A2A 서버: <http://localhost:8090>
+- A2A 임베디드 서버 포트: 8090(Deep/HITL), 8091(Researcher), 8092(Supervisor)
 
 ## 검증 기준
 
@@ -54,6 +54,45 @@
 - 시퀀스: [docs/diagrams/step4_sequence.md](../docs/diagrams/step4_sequence.md)
 - 상태 전이: [docs/diagrams/step4_state.md](../docs/diagrams/step4_state.md)
 - 아키텍처: [docs/diagrams/step4_architecture.md](../docs/diagrams/step4_architecture.md)
+
+## HITL 통합 상세(요약)
+
+아래는 `steps/hitl_integration_spec.md`의 핵심을 현재 구현 코드 기준으로 압축한 내용입니다.
+
+- 아키텍처/포트
+  - HITL Web/API: 8000 (`src/hitl_web/api.py`, 정적 UI + REST + WebSocket)
+  - A2A Agents: 8090(Deep/HITL), 8091(Researcher), 8092(Supervisor)
+  - Redis: 6379 (승인 요청 저장/이벤트 Pub/Sub)
+
+- 핵심 컴포넌트(코드 기준)
+  - `src/hitl/manager.py`: `HITLManager` — 승인 생성/대기/상태 전환, 진행 브로드캐스트
+  - `src/hitl/storage.py`: `ApprovalStorage` — Redis 저장/조회/인덱스/이벤트
+  - `src/hitl/models.py`: `ApprovalType`, `ApprovalStatus`, `ApprovalRequest`, `HITLPolicy`
+  - `src/hitl/notifications.py`: Slack/Email/WebPush 알림 채널(옵션)
+  - `src/hitl_web/api.py`: FastAPI 라우트, `/ws` 브로드캐스트, 대시보드 서빙
+
+- 데이터 모델(요약)
+  - `ApprovalType`: `critical_decision`, `data_validation`, `final_report`, `budget_approval`, `safety_check`
+  - `ApprovalStatus`: `pending`, `approved`, `rejected`, `timeout`, `auto_approved`
+  - `ApprovalRequest` 주요 필드: `request_id`, `agent_id`, `approval_type`, `title`, `description`, `context(final_report 등)`, `status`, `priority`, `created_at/decided_at`
+
+- API 개요(실구현)
+  - 헬스/상태: `GET /health`, `GET /api/a2a/status`
+  - 승인 목록: `GET /api/approvals/pending|approved|rejected?agent_id=&approval_type=&limit=`
+  - 승인 단건: `GET /api/approvals/{request_id}`
+  - 보고서 보기/다운로드: `GET /api/approvals/{request_id}/final-report`, `GET /api/approvals/{request_id}/final-report/download?format=md|txt|json`
+  - 승인/거부: `POST /api/approvals/{request_id}/approve|reject` (body: `{request_id, decision, decided_by, reason?}`)
+  - 연구 시작: `POST /api/research/start` (body: `{topic}`)
+  - WebSocket: `GET /ws` (메시지 타입: `initial_data`, `approval_update`, `research_started`, `research_progress`, `research_completed`)
+
+- 운영 모드
+  - 기본: 외부 HITL(UI) — `HITLManager` 승인 요청/대기 사용
+  - 인터럽트 모드: `HITL_MODE=interrupt` 설정 시 LangGraph `interrupt`를 통해 입력 요구(`input-required`) 후 재개
+
+- 개정(Revision) 루프
+  - 거절 시 피드백(`decision_reason`)을 수집 → `ResearchConfig.max_revision_loops`(기본 2) 내에서 보고서 개선 반복
+
+자세한 설계/예제/베스트프랙티스는 [hitl_integration_spec.md](hitl_integration_spec.md)를 참고하세요.
 
 ## 트러블슈팅
 

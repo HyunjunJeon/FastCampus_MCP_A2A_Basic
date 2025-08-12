@@ -2,7 +2,7 @@
 
 관련 Step: [../../steps/step1.md](../../steps/step1.md)
 
-아래 다이어그램은 MCP 서버의 도구를 LangGraph 에이전트에 연결(get_tools → bind_tools)하고, 질의 처리 중 도구 호출이 이루어지는 흐름을 단순화해 보여줍니다.
+아래 다이어그램은 MCP 서버의 도구를 LangGraph 에이전트에 연결(get_tools → bind_tools)하고, 질의 처리 중 도구 호출이 이루어지는 흐름을 단순화해 보여줍니다. (코드 기준: `examples/step1_mcp_langgraph.py`, MCP 포트: 3000/3001/3002)
 
 ```mermaid
 sequenceDiagram
