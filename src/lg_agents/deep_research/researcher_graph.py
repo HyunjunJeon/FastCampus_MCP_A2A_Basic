@@ -225,6 +225,11 @@ def _tc_args(tool_call) -> dict:
 
 _MCP_TOOLS_CACHE: list | None = None
 _MCP_TOOLS_ASYNC_LOCK: asyncio.Lock = asyncio.Lock()
+_MCP_TOOLS_INIT_DONE: bool = False
+# 서버별 동시 실행 제한 (소규모 동시화)
+_MCP_SERVER_SEMAPHORES: dict[str, asyncio.Semaphore] = {}
+# 도구 객체 → 소속 서버명 매핑
+_MCP_TOOL_TO_SERVER: dict[int, str] = {}
 
 
 def _safe_tool_name_for_filter(tool_obj) -> str | None:
@@ -253,6 +258,9 @@ async def _load_mcp_tools_once(config: RunnableConfig) -> list:
     def _ensure_trailing_slash(u: str) -> str:
         return u if u.endswith("/") else (u + "/")
 
+    # NOTE: 서버는 python-mcp StreamableHTTP(또는 SSE)를 사용할 수 있다.
+    # arxiv는 표준 StreamableHTTP 구현으로 교체했으므로 streamable_http로 지정하고,
+    # 기타 서버는 기존 설정대로 유지한다.
     connections = {
         name: {"transport": "streamable_http", "url": _ensure_trailing_slash(url)}
         for name, url in configurable.mcp_servers.items()
@@ -304,50 +312,30 @@ async def _load_mcp_tools_once(config: RunnableConfig) -> list:
     # Small initial delay to smooth out StreamableHTTP session startup
     await asyncio.sleep(0.5)
 
-    # 세션 단위 로딩으로 안정성 확보 (서버별 순차 세션)
+    # 안정적 로딩: 서버별 순차 로딩으로 초기 혼잡/교착을 방지한다.
     try:
         all_tools: list = []
-        for server_name in connections.keys():
-            # Per-server retry with exponential backoff
+        # 동시화는 해제 (세마포어 제거)
+        for server_name, conn in connections.items():
             backoff_s = 0.4
             last_err: Exception | None = None
+            server_tools: list = []
             for attempt in range(1, 4):
                 try:
-                    async with client.session(server_name) as session:
-                        tools = await load_mcp_tools(session)
-                        all_tools.extend(tools)
-                        last_err = None
-                        break
+                    # 에페메럴 세션 기반 로딩 (도구는 connection을 캡처하여 호출 시 자체 세션을 엶)
+                    server_tools = await load_mcp_tools(None, connection=conn)
+                    last_err = None
+                    break
                 except Exception as inner:
                     last_err = inner
                     if attempt < 3:
                         await asyncio.sleep(backoff_s)
                         backoff_s *= 2
-                
-            if last_err is not None:
+            if last_err is not None and not server_tools:
                 logger.warning(
-                    f"Failed to load tools from '{server_name}' after retries: "
-                    f"{type(last_err).__name__}: {last_err}"
+                    f"Failed to load tools from '{server_name}': {type(last_err).__name__}: {last_err}"
                 )
-
-        if not all_tools:
-            # 폴백: 라이브러리의 일괄 로딩 사용 (환경에 따라 더 잘 동작하는 경우가 있음)
-            try:
-                # Retry get_tools with backoff as well
-                backoff_s = 0.5
-                for attempt in range(1, 3):
-                    try:
-                        all_tools = await client.get_tools()
-                        break
-                    except Exception as fallback_err:
-                        if attempt < 2:
-                            await asyncio.sleep(backoff_s)
-                            backoff_s *= 2
-                        else:
-                            raise fallback_err
-            except Exception as fallback_err:
-                logger.warning(f"Fallback get_tools() failed: {type(fallback_err).__name__}: {fallback_err}")
-                all_tools = []
+            all_tools.extend(server_tools)
 
         filtered = []
         skipped = 0
@@ -372,16 +360,25 @@ async def get_all_tools(config: RunnableConfig):
     병렬 연구 실행 시 동시 초기화 경쟁 조건으로 일부 도구에서
     AttributeError("name")가 발생할 수 있어 단일 로드로 캐시한다.
     """
-    global _MCP_TOOLS_CACHE
+    global _MCP_TOOLS_CACHE, _MCP_TOOLS_INIT_DONE
+    # 이미 성공적으로 로드된 경우 즉시 반환
     if isinstance(_MCP_TOOLS_CACHE, list) and _MCP_TOOLS_CACHE:
-        # 주의: Researcher 단계에서는 MCP 도구만 바인딩한다 (혼합 타입 바인딩 이슈 회피)
         return list(_MCP_TOOLS_CACHE)
+
+    # 첫 시도 이후에는 (성공/실패 무관) 재시도하지 않음 → 불필요한 서버 호출 방지
+    if _MCP_TOOLS_INIT_DONE:
+        return list(_MCP_TOOLS_CACHE or [])
+
     async with _MCP_TOOLS_ASYNC_LOCK:
-        # 더블 체크 락킹으로 경쟁 조건 방지
+        # 더블 체크
         if isinstance(_MCP_TOOLS_CACHE, list) and _MCP_TOOLS_CACHE:
             return list(_MCP_TOOLS_CACHE)
-        _MCP_TOOLS_CACHE = await _load_mcp_tools_once(config)
-    return list(_MCP_TOOLS_CACHE)
+        try:
+            _MCP_TOOLS_CACHE = await _load_mcp_tools_once(config)
+        finally:
+            # 첫 시도 완료 플래그 (성공/실패 무관)
+            _MCP_TOOLS_INIT_DONE = True
+    return list(_MCP_TOOLS_CACHE or [])
 
 
 async def _execute_tool_safely(tool, args, config):
@@ -446,7 +443,16 @@ async def researcher_tools(state: ResearcherState, config: RunnableConfig):
     researcher_messages = state.get("researcher_messages", [])
     most_recent_message = researcher_messages[-1]
 
+    # 첫 응답에서 툴콜이 없을 수 있으므로, 설정값 기준 최소 N회는 researcher 루프를 더 돌도록 함
     if not most_recent_message.tool_calls:
+        try:
+            from src.config import ResearchConfig as _RC
+            cfg = _RC.from_runnable_config(config)
+            min_iters = max(0, int(getattr(cfg, "researcher_min_iterations_before_compress", 1)))
+        except Exception:
+            min_iters = 1
+        if state.get("tool_call_iterations", 0) < min_iters:
+            return Command(goto="researcher")
         return Command(goto="compress_research")
 
     # 주의: tool 실행 단계에서도 MCP 도구만 사용한다

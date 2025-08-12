@@ -171,7 +171,7 @@ async def clarify_with_user(
 
     configurable = ResearchConfig.from_runnable_config(config)
 
-    # 명확화가 비활성화된 경우 즉시 다음 단계로
+    # 명확화가 비활성화된 경우 즉시 다음 단계로 (Step4는 ALLOW_CLARIFICATION=0 권장)
     if not configurable.allow_clarification:
         logger.info(
             f"clarify_with_user completed in {time.time() - start_time:.2f}s (skipped)"

@@ -5,7 +5,6 @@ LangGraph 기반 에이전트 구현 모음. 베이스 계층, Deep Research 그
 ### Files
 
 - __init__.py: 패키지 초기화.
-- research_agent.py: A2A 스타일 연구 에이전트(승인 단계/HITL 연계) 구현.
 
 ### Submodules
 

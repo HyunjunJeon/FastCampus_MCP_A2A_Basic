@@ -12,10 +12,10 @@ Step 3: Deep Research 시스템 비교 - LangGraph vs A2A
    - 서브그래프와 Command 객체로 노드 간 라우팅
    - clarify_with_user → write_research_brief → supervisor → researcher → compress_research → final_report_generation
 
-2. A2A Deep Research (a2a_orchestrator/agents/deep_research.py)  
+2. A2A Deep Research
    - 독립적인 에이전트들의 Agent-to-Agent 통신
-   - 평면적 컨텍스트 공유 (research_context 딕셔너리)
-   - DeepResearchA2AAgent → PlannerA2AAgent → ResearcherA2AAgent → WriterA2AAgent
+   - 평면적 컨텍스트 공유: 실제로 DeepResearch 에서는 Supervisor 를 호출할 때만 A2A 호출을 활용
+   - DeepResearchA2AAgent → SupervisorA2AAgent → (researcher → compress_research → final_report_generation)
 
 === 실행 방법 ===
 1. 환경변수 설정: OPENAI_API_KEY 등 필수 API 키

@@ -21,10 +21,6 @@ AI와 인간의 협업 모델을 학습합니다.
    - (선택) 웹 대시보드 접속: http://localhost:8000/hitl
      본 스크립트는 HITL 웹 서버와 A2A 서버를 자동으로 기동합니다.
 2. 실행: python examples/step4_hitl_demo.py
-3. 실행 모드 선택:
-   - comprehensive: 자동화된 포괄적 테스트
-   - interactive: 단계별 대화형 데모
-   - cancellable: 취소 가능한 DeepResearch 테스트
 
 === 주요 개념 ===
 - HITL 패턴: AI 자동화와 인간 통제의 균형
@@ -48,6 +44,11 @@ sys.path.append(PROJECT_ROOT)
 
 # 프로젝트 루트의 .env 파일 로드
 load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
+# Step4 기본값: HITL 활성화 (ENV 미설정 시)
+os.environ.setdefault("ENABLE_HITL", "1")
+os.environ.setdefault("HITL_MODE", os.environ.get("HITL_MODE", "external"))
+# Step4: 초기 명확화 질문은 건너뛰고 바로 연구/보고서 생성으로 진행
+os.environ.setdefault("ALLOW_CLARIFICATION", "0")
 
 import aiohttp
 from a2a.types import AgentSkill
@@ -64,12 +65,8 @@ from src.a2a_integration.a2a_lg_utils import create_agent_card
 from src.lg_agents.deep_research.deep_research_agent_a2a import (
     deep_research_graph_a2a,
 )
-from src.lg_agents.deep_research.researcher_agent_a2a import (
-    build_researcher_a2a_graph,
-)
-from src.lg_agents.deep_research.supervisor_a2a_graph import (
-    build_supervisor_a2a_graph,
-)
+from src.lg_agents.deep_research.supervisor_graph import build_supervisor_subgraph
+from src.lg_agents.deep_research.researcher_graph import researcher_graph
 
 async def start_hitl_server():
     """HITL 웹 서버 자동 시작"""
@@ -166,7 +163,7 @@ async def start_hitl_a2a_servers():
             streaming=True,
             push_notifications=True,
         )
-        supervisor_graph = build_supervisor_a2a_graph()
+        supervisor_graph = build_supervisor_subgraph()
         s_ctx = start_embedded_graph_server(
             graph=supervisor_graph,
             agent_card=supervisor_card,
@@ -203,9 +200,9 @@ async def start_hitl_a2a_servers():
             streaming=True,
             push_notifications=True,
         )
-        researcher_graph = build_researcher_a2a_graph()
+        researcher_graph_built = researcher_graph
         r_ctx = start_embedded_graph_server(
-            graph=researcher_graph,
+            graph=researcher_graph_built,
             agent_card=researcher_card,
             host=host,
             port=r_port,
@@ -397,14 +394,21 @@ async def a2a_deepresearch_hitl():
         revision_count = 0
 
         async def _run_deep_research(query_text: str) -> str:
-            """A2A DeepResearch 서버에 질의하고 최종 보고서를 텍스트로 수신"""
-            async with A2AClientManager(base_url=deep_url) as client:
-                return await client.send_query(query_text)
+            """A2A DeepResearch 서버에 질의하고 최종 보고서 텍스트만 반환
 
-        # 3-1) 최초 실행
+            - 텍스트 스트림이 아닌 DataPart(JSON)를 병합 수신하여 'final_report' 키를 신뢰한다.
+            - 보고서가 없으면 빈 문자열을 반환한다.
+            """
+            async with A2AClientManager(base_url=deep_url) as client:
+                merged = await client.send_data_merged({
+                    "messages": [{"role": "human", "content": query_text}]
+                })
+                return (merged.get("final_report") or "") if isinstance(merged, dict) else ""
+
+        # 3-1) 최종 보고서 생성 먼저 수행
         print(f"\n🔎 연구 주제: {topic}")
         final_report = await _run_deep_research(topic)
-        if not final_report:
+        if not isinstance(final_report, str) or not final_report.strip():
             print("❌ 최종 보고서를 생성하지 못했습니다.")
             return False
 

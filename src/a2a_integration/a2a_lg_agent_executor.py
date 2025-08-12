@@ -4,6 +4,7 @@ LangGraph Agent를 A2A 프로토콜로 래핑하는 AgentExecutor 구현
 """
 
 from typing import Any, Callable
+import json
 from langgraph.graph.state import CompiledStateGraph
 from langchain_core.messages import AIMessage, HumanMessage, convert_to_messages, filter_messages
 from src.utils.logging_config import get_logger
@@ -14,6 +15,7 @@ from a2a.server.tasks import TaskUpdater
 from a2a.types import InternalError, Part, TaskState, TextPart, DataPart
 from a2a.utils import new_agent_text_message, new_task, get_data_parts
 from a2a.utils.errors import ServerError, TaskNotFoundError
+from langgraph.types import Command
 
 logger = get_logger(__name__)
 
@@ -282,6 +284,33 @@ class LangGraphWrappedA2AExecutor(AgentExecutor):
             return "\n".join([s for s in strings if isinstance(s, str) and s.strip()][:3]).strip()
         return ""
 
+    def _extract_interrupt_payload(self, chunk: Any) -> Any | None:
+        """스트림 청크에서 LangGraph interrupt 페이로드를 탐지 및 추출.
+
+        LangGraph 문서 기준으로 인터럽트는 스트림에 `{"__interrupt__": (Interrupt(...), ...)}` 형태로 나타난다.
+        구현체 간 차이를 고려하여 유연하게 값 추출을 시도한다.
+        """
+        try:
+            if not isinstance(chunk, dict):
+                return None
+            intr = chunk.get("__interrupt__")
+            if intr is None:
+                return None
+            # intr 는 보통 tuple/list 안에 Interrupt 객체가 들어있다.
+            candidates = intr if isinstance(intr, (list, tuple)) else [intr]
+            for item in candidates:
+                # 1) 객체의 value 속성 시도
+                value = getattr(item, "value", None)
+                if value is not None:
+                    return value
+                # 2) dict 로 표현된 경우 value 키 시도
+                if isinstance(item, dict) and "value" in item:
+                    return item.get("value")
+            # 3) 원시값 자체 반환
+            return candidates[0] if candidates else True
+        except Exception:
+            return None
+
     def _extract_ai_text_for_stream(self, result: dict[str, Any]) -> str:
         """스트리밍 단계에서 사용할 AI 전용 텍스트 추출을 단순/견고하게 수행.
 
@@ -453,9 +482,71 @@ class LangGraphWrappedA2AExecutor(AgentExecutor):
             accumulated_text: str = ""
             await updater.start_work() # Working 상태로 변경
             logger.info(f"A2A Agent 요청 처리 시작 - LangGraph Input: {graph_input}")
-            async for chunk in self.graph.astream(graph_input):
+
+            # 동일한 대화 쓰레드를 위해 thread_id 지정 (태스크 ID 기반 고정)
+            thread_id = getattr(task, "id", None) or getattr(context, "task_id", "")
+            config = {"configurable": {"thread_id": str(thread_id)}}
+
+            # 재개 여부 판정: 이전 상태가 input-required 라면 resume 로직 적용
+            is_resume = False
+            try:
+                task_status = getattr(task, "status", None)
+                state_value = getattr(getattr(task_status, "state", None), "value", None) or getattr(task_status, "state", None)
+                # state 가 Enum 이면 .value, 문자열이면 그대로 비교
+                if str(state_value) in {"input-required", "input_required"}:
+                    is_resume = True
+            except Exception:
+                is_resume = False
+
+            # resume 값 추출 (텍스트가 우선, DataPart 에 resume/answer/user_input/value 키가 있으면 사용)
+            resume_value: Any = None
+            if is_resume:
+                # DataPart 에서 찾기
+                resume_keys = ("resume", "answer", "user_input", "value")
+                payload = None
+                if incoming_parts:
+                    try:
+                        payload = incoming_parts[-1] if isinstance(incoming_parts[-1], dict) else getattr(getattr(incoming_parts[-1], "root", None), "data", None)
+                    except Exception:
+                        payload = None
+                if isinstance(payload, dict):
+                    for k in resume_keys:
+                        if k in payload and payload[k] is not None:
+                            resume_value = payload[k]
+                            break
+                # 텍스트 질의 사용
+                if resume_value is None and isinstance(query, str) and query.strip():
+                    resume_value = query.strip()
+
+            invoke_input: Any = Command(resume=resume_value) if is_resume else graph_input
+
+            async for chunk in self.graph.astream(invoke_input, config=config):
                 logger.info(f"A2A Agent 요청 처리 시작 - LangGraph Output: {chunk}")
                 last_result = chunk
+
+                # 0) 인터럽트 발생 감지 → input-required 로 전환하고 종료
+                try:
+                    interrupt_payload = self._extract_interrupt_payload(chunk)
+                except Exception:
+                    interrupt_payload = None
+                if interrupt_payload is not None:
+                    # 메시지 구성: payload 에 question/action 키가 있으면 우선 사용
+                    try:
+                        if isinstance(interrupt_payload, dict):
+                            question = interrupt_payload.get("question") or interrupt_payload.get("action")
+                            prompt_str = question or json.dumps(interrupt_payload, ensure_ascii=False)
+                        else:
+                            prompt_str = str(interrupt_payload)
+                    except Exception:
+                        prompt_str = "추가 입력이 필요합니다. 내용을 입력해 주세요."
+
+                    await updater.update_status(
+                        TaskState.input_required,
+                        new_agent_text_message(prompt_str, task.context_id, task.id),
+                        final=True,
+                    )
+                    return
+
                 try:
                     partial_text = self._extract_ai_text_for_stream(chunk) or ""
                     if partial_text:

@@ -10,6 +10,8 @@ Supervisor 서브그래프를 A2A 호출을 지원하는 그래프로 교체하�
 """
 
 from langgraph.graph import START, END, StateGraph
+from langgraph.checkpoint.memory import InMemorySaver
+import os
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command
 
@@ -25,9 +27,20 @@ from src.utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 async def call_supervisor_a2a(state: HITLAgentState, config: RunnableConfig) -> HITLAgentState:
-    # TODO: 여기서 A2A 로 감싸진 build_supervisor_a2a_graph 를 Client 로써 호출
+    # A2A로 감싼 Supervisor 그래프 호출
     from a2a_integration.a2a_lg_client_utils import A2AClientManager
-    async with A2AClientManager(base_url="http://localhost:8090") as client:
+    # 우선순위: 환경변수 SUPERVISOR_A2A_URL → ResearchConfig.analysis → 기본 8092
+    try:
+        cfg = ResearchConfig.from_runnable_config(config)
+        cfg_url = getattr(cfg, "a2a_agent_endpoints", {}).get("analysis")
+    except Exception:
+        cfg_url = None
+    supervisor_url = (
+        os.getenv("SUPERVISOR_A2A_URL")
+        or cfg_url
+        or "http://localhost:8092"
+    )
+    async with A2AClientManager(base_url=supervisor_url) as client:
         # NOTE: Supervisor 그래프에서 호출받는 로직에 맞게 데이터 구성
         result = await client.send_data_merged(
             {
@@ -43,9 +56,32 @@ async def call_supervisor_a2a(state: HITLAgentState, config: RunnableConfig) -> 
     return state
 
 async def route_after_final_report(state: HITLAgentState, config: RunnableConfig) -> Command:
-    """최종 보고서 이후 HITL 활성 여부에 따라 다음 경로를 결정"""
-    configurable = ResearchConfig.from_runnable_config(config)
-    if bool(getattr(configurable, "enable_hitl", False)):
+    """최종 보고서 생성 직후에만 승인 루프로 진입하도록 보장
+
+    - clarify → write_research_brief → research_supervisor → final_report_generation
+      단계가 끝난 이후에만 HITL 승인을 허용한다.
+    - 이 노드는 final_report_generation 다음에만 호출된다.
+    - 단, 설정상 HITL이 비활성화된 경우는 바로 종료한다.
+    """
+    # 1) runnable config에서 직접 확인 (ResearchConfig 모델 외 키도 허용)
+    enable_hitl_cfg = False
+    try:
+        cfg = config.get("configurable", {}) if isinstance(config, dict) else getattr(config, "configurable", {}) or {}
+        enable_hitl_cfg = bool(cfg.get("enable_hitl", False))
+    except Exception:
+        enable_hitl_cfg = False
+
+    # 2) 환경변수 확인
+    def _truthy(env_val: str | None) -> bool:
+        if not env_val:
+            return False
+        return env_val.strip().lower() in {"1", "true", "yes", "y"}
+
+    enable_hitl_env = _truthy(os.getenv("ENABLE_HITL")) or (os.getenv("HITL_MODE", "").strip().lower() == "interrupt")
+
+    # final_report 가 존재하는지 최소 체크 (빈 문자열도 허용하되 키는 있어야 함)
+    has_final = "final_report" in state
+    if (enable_hitl_cfg or enable_hitl_env) and has_final:
         return Command(goto="hitl_final_approval")
     return Command(goto=END)
 
@@ -67,6 +103,7 @@ deep_researcher_builder_a2a.add_edge("final_report_generation", "route_after_fin
 deep_researcher_builder_a2a.add_edge("revise_final_report", "hitl_final_approval")
 deep_researcher_builder_a2a.add_edge("hitl_final_approval", END)
 
-deep_research_graph_a2a = deep_researcher_builder_a2a.compile()
+# Durable execution for HIL: provide a checkpointer so interrupts can pause/resume
+deep_research_graph_a2a = deep_researcher_builder_a2a.compile(checkpointer=InMemorySaver())
 
 

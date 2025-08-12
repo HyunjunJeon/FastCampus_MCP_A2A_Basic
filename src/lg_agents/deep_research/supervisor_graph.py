@@ -283,7 +283,7 @@ def build_supervisor_subgraph():
     async def supervisor_tools(state: DeepResearchSupervisorState, config: RunnableConfig):
         configurable = ResearchConfig.from_runnable_config(config)
         supervisor_messages = state.get("supervisor_messages", [])
-        research_iterations = state.get("research_iterations", 2)
+        research_iterations = state.get("research_iterations", 0)
 
         should_terminate, most_recent_message = _check_termination_conditions(
             supervisor_messages, 
@@ -304,6 +304,28 @@ def build_supervisor_subgraph():
                 tool_call for tool_call in (most_recent_message.tool_calls or []) if _tc_name(tool_call) == "ConductResearch"
             ]
             logger.info(f"ConductResearch calls detected: {len(all_conduct_research_calls)}")
+
+            # 첫 1~2회 반복에서 툴콜이 전혀 없으면 연구 계획(research_brief)로 최소 1회 강제 실행
+            if not all_conduct_research_calls:
+                brief = state.get("research_brief", "")
+                until_iter = getattr(configurable, "supervisor_force_conduct_research_until_iteration", 1)
+                enabled = bool(getattr(configurable, "supervisor_force_conduct_research_enabled", True))
+                if (
+                    enabled
+                    and isinstance(brief, str)
+                    and brief.strip()
+                    and research_iterations <= max(0, int(until_iter))
+                ):
+                    logger.info("No ConductResearch tool calls; forcing one with research_brief")
+                    all_conduct_research_calls = [
+                        {
+                            "id": "forced-1",
+                            "function": {
+                                "name": "ConductResearch",
+                                "arguments": json.dumps({"research_topic": brief}),
+                            },
+                        }
+                    ]
 
             tool_results = await _execute_parallel_research(all_conduct_research_calls, config, researcher_graph)
 

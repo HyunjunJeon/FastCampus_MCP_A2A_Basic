@@ -309,6 +309,46 @@ class A2AClientManager:
 
         return result
 
+    async def respond_to_input_required(
+        self,
+        *,
+        context_id: str,
+        task_id: str,
+        resume_value: Any,
+    ) -> str:
+        """`input-required` 상태의 태스크에 사용자 응답을 전송하여 재개한다.
+
+        - 동일한 `context_id`/`task_id`를 유지하여 서버가 기존 태스크를 이어받도록 한다.
+        - 재개 값은 DataPart의 `{ "resume": <value> }` 로 전달 (서버는 텍스트 본문도 허용).
+        - 반환값은 스트리밍 텍스트를 병합한 최종 텍스트.
+        """
+        if not self.client:
+            raise A2AClientError("클라이언트가 초기화되지 않았습니다. initialize()를 먼저 호출하세요.")
+
+        # 우선 DataPart 형태로 전달 (서버가 resume 키를 우선적으로 인식하도록)
+        message = Message(
+            role=Role.user,
+            parts=[Part(root=DataPart(data={"resume": resume_value}))],
+            message_id=str(uuid4()),
+            context_id=context_id,
+            task_id=task_id,
+        )
+
+        response_text = ""
+        async for event in self.client.send_message(message):
+            had_part = False
+            for text_content in self._iter_texts_from_event(event):
+                had_part = True
+                if not text_content:
+                    continue
+                response_text = self._merge_incremental_text(response_text, text_content)
+            if not had_part:
+                text_content = self._extract_text_from_event(event)
+                if text_content:
+                    response_text = self._merge_incremental_text(response_text, text_content)
+
+        return response_text.strip()
+
     def _extract_text_from_event(self, event) -> str:
         if not isinstance(event, tuple) or len(event) < 1:
             return ""
