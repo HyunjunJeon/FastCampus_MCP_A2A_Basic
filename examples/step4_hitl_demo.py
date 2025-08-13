@@ -41,6 +41,7 @@ from dotenv import load_dotenv
 # 프로젝트 루트 디렉토리 설정
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(PROJECT_ROOT)
+
 # src 패키지를 직접 임포트할 수 있도록 보조 경로 추가 (예: from a2a_integration ... 호환)
 src_path = os.path.join(PROJECT_ROOT, "src")
 if src_path not in sys.path:
@@ -72,6 +73,8 @@ from src.lg_agents.deep_research.deep_research_agent_a2a import (
 from src.lg_agents.deep_research.supervisor_graph import build_supervisor_subgraph
 from src.lg_agents.deep_research.researcher_graph import researcher_graph
 from src.utils.http_client import http_client
+
+A2A_DEFAULT_MODES = ["text/plain", "application/json", "text/markdown"]
 
 async def start_hitl_server():
     """HITL 웹 서버 자동 시작"""
@@ -137,7 +140,7 @@ async def start_hitl_server():
         print(f"❌ HITL 서버 시작 실패: {e}")
         return None
 
-async def start_hitl_a2a_servers():
+async def start_a2a_deep_research_servers():
     """Step3와 동일한 포트(8090, 8091, 8092)로 3개의 A2A 임베디드 서버를 기동"""
     host = "0.0.0.0"  # 바인드는 0.0.0.0로, 카드 URL은 localhost로 설정
 
@@ -162,8 +165,8 @@ async def start_hitl_a2a_servers():
             url=f"http://localhost:{s_port}",
             version="1.0.0",
             skills=s_skills,
-            default_input_modes=["text/plain"],
-            default_output_modes=["text/plain"],
+            default_input_modes=A2A_DEFAULT_MODES,
+            default_output_modes=A2A_DEFAULT_MODES,
             streaming=True,
             push_notifications=True,
         )
@@ -199,8 +202,8 @@ async def start_hitl_a2a_servers():
             url=f"http://localhost:{r_port}",
             version="1.0.0",
             skills=r_skills,
-            default_input_modes=["text/plain"],
-            default_output_modes=["text/plain"],
+            default_input_modes=A2A_DEFAULT_MODES,
+            default_output_modes=A2A_DEFAULT_MODES,
             streaming=True,
             push_notifications=True,
         )
@@ -236,8 +239,8 @@ async def start_hitl_a2a_servers():
             url=f"http://localhost:{d_port}",
             version="1.0.0",
             skills=d_skills,
-            default_input_modes=["text/plain"],
-            default_output_modes=["text/plain"],
+            default_input_modes=A2A_DEFAULT_MODES,
+            default_output_modes=A2A_DEFAULT_MODES,
             streaming=True,
             push_notifications=True,
         )
@@ -331,7 +334,7 @@ async def check_system_status():
 
     return hitl_server_process
 
-async def a2a_deepresearch_hitl():
+async def run_a2a_deep_research_hitl_demo():
     """HITL DeepResearch 데모 실행"""
     print("=== Step 4: HITL DeepResearch 데모 ===")
 
@@ -371,7 +374,7 @@ async def a2a_deepresearch_hitl():
 
         # 2-1. A2A 서버들(3개) 시작 - Step3와 동일 포트 사용
         try:
-            a2a_contexts, server_infos = await start_hitl_a2a_servers()
+            a2a_contexts, server_infos = await start_a2a_deep_research_servers()
         except Exception as e:
             print(f"❌ A2A 서버 시작 실패: {e}")
             return False
@@ -503,7 +506,7 @@ async def a2a_deepresearch_hitl():
 
 async def main():
     """메인 실행 함수"""
-    await a2a_deepresearch_hitl()
+    await run_a2a_deep_research_hitl_demo()
 
 
 def _enable_file_logging_for_step(step_number: int) -> str:

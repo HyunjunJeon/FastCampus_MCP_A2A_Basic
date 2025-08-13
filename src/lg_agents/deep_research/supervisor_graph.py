@@ -33,6 +33,7 @@ class SupervisorInputState(TypedDict):
 class SupervisorOutputState(TypedDict):
     supervisor_messages: Annotated[list, override_reducer]
     research_iterations: int
+    notes: Annotated[list[str], override_reducer]
     raw_notes: Annotated[list[str], override_reducer]
 
 class SupervisorOverallState(SupervisorInputState, SupervisorOutputState):

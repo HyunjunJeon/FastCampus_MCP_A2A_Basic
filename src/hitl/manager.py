@@ -84,62 +84,6 @@ class HITLManager:
         task.add_done_callback(_attach_done)
         self._background_tasks.add(task)
 
-    async def execute_deep_research_handler(self, request: ApprovalRequest):
-        """승인 완료 시 Deep Research 자동 실행 핸들러"""
-        try:
-            # Deep Research 관련 승인 요청인지 확인
-            if not self._is_research_related(request):
-                logger.info(f"비연구 승인 요청, Deep Research 실행 안 함: {request.title}")
-                return
-            
-            logger.info(f"Deep Research 자동 실행 시작: {request.title}")
-            
-            # WebSocket 연결 관리자 가져오기 (API 서버에서 설정)
-            connection_manager = getattr(self, '_connection_manager', None)
-            if not connection_manager:
-                logger.warning("WebSocket 연결 관리자가 없습니다. 진행상황 브로드캐스트를 건너뜁니다.")
-            
-            # Deep Research 시작 브로드캐스트
-            start_data = {
-                "request_id": request.request_id,
-                "task_id": request.task_id,
-                "topic": request.title,
-                "agent_id": request.agent_id,
-                "started_at": datetime.now(),
-                "expected_duration": "5-15분",
-                "stages": ["계획 수립", "데이터 수집", "분석 및 보고서 작성"]
-            }
-            
-            if connection_manager:
-                await connection_manager.broadcast_research_started(start_data)
-            
-            # 실제 Deep Research 실행
-            research_query = self._extract_research_query(request)
-            await self._run_deep_research_with_progress(
-                query=research_query,
-                request=request,
-                connection_manager=connection_manager
-            )
-            
-        except asyncio.CancelledError:
-            logger.info("Deep Research 실행이 취소되었습니다.")
-            return
-        except Exception as e:
-            logger.error(f"Deep Research 실행 중 오류: {e}")
-            
-            # 실패 브로드캐스트
-            if connection_manager:
-                completion_data = {
-                    "request_id": request.request_id,
-                    "task_id": request.task_id,
-                    "success": False,
-                    "started_at": datetime.now(),
-                    "completed_at": datetime.now(),
-                    "final_status": "실패",
-                    "summary": f"Deep Research 실행 중 오류가 발생했습니다: {str(e)}"
-                }
-                await connection_manager.broadcast_research_completed(completion_data)
-    
     def _is_research_related(self, request: ApprovalRequest) -> bool:
         """연구 관련 승인 요청인지 확인"""
         research_keywords = [

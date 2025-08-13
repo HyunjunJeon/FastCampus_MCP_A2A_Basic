@@ -256,9 +256,8 @@ async def _load_mcp_tools_once(config: RunnableConfig) -> list:
     def _ensure_trailing_slash(u: str) -> str:
         return u if u.endswith("/") else (u + "/")
 
-    # NOTE: 서버는 python-mcp StreamableHTTP(또는 SSE)를 사용할 수 있다.
-    # arxiv는 표준 StreamableHTTP 구현으로 교체했으므로 streamable_http로 지정하고,
-    # 기타 서버는 기존 설정대로 유지한다.
+    # NOTE: MCP 서버는 StreamableHTTP를 사용할 수 있다.
+    # 표준 StreamableHTTP 구현으로 교체했으므로 streamable_http로 지정한다.
     connections = {
         name: {"transport": "streamable_http", "url": _ensure_trailing_slash(url)}
         for name, url in configurable.mcp_servers.items()
@@ -406,9 +405,6 @@ async def researcher(state: ResearcherState, config: RunnableConfig):
         model="gpt-4.1-mini", # Rate Limit 때문에 임시로 제한이 더 넉넉한 모델로 변경
         temperature=0,
     )
-    
-    # NOTE: 연구 완료 신호 도구 추가
-    tools = tools + [ResearchComplete]
     
     try:
         model = (
