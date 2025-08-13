@@ -52,8 +52,10 @@ async def lifespan(app: FastAPI):
     for status in ApprovalStatus:
         hitl_manager.register_handler(status, broadcast_approval_update)
     
-    # 승인 완료 시 Deep Research 자동 실행 핸들러 등록
-    hitl_manager.register_handler(ApprovalStatus.APPROVED, hitl_manager.execute_deep_research_handler)
+    # 승인 완료 시 Deep Research 자동 실행 핸들러 등록 (중복 승인 방지: 환경변수로 on/off)
+    import os as _os
+    if (_os.getenv("ENABLE_HITL", "0").strip().lower() in {"1","true","yes","y"}):
+        hitl_manager.register_handler(ApprovalStatus.APPROVED, hitl_manager.execute_deep_research_handler)
     
     logger.info("HITL Web API 시작 - Deep Research 자동 실행 핸들러 등록됨")
     

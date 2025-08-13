@@ -28,7 +28,7 @@ logger = get_logger(__name__)
 
 async def call_supervisor_a2a(state: HITLAgentState, config: RunnableConfig) -> HITLAgentState:
     # A2A로 감싼 Supervisor 그래프 호출
-    from a2a_integration.a2a_lg_client_utils import A2AClientManager
+    from src.a2a_integration.a2a_lg_client_utils import A2AClientManager
     # 우선순위: 환경변수 SUPERVISOR_A2A_URL → ResearchConfig.analysis → 기본 8092
     try:
         cfg = ResearchConfig.from_runnable_config(config)

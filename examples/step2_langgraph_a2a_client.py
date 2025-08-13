@@ -28,8 +28,7 @@ import asyncio
 import os
 import sys
 from pathlib import Path
-from a2a.types import AgentCapabilities
-from a2a_integration.a2a_lg_utils import create_agent_card
+from src.a2a_integration.a2a_lg_utils import create_agent_card
 from dotenv import load_dotenv
 from langchain.chat_models import init_chat_model
 

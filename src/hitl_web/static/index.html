@@ -1004,24 +1004,17 @@
         };
         
         // 승인 요청 컴포넌트
-        const ApprovalCard = ({ approval, onApprove, onReject, showActions = true }) => {
+        const ApprovalCard = ({ approval, onApproveOpen, onRejectOpen, showActions = true }) => {
             const formatDate = (dateString) => {
                 return new Date(dateString).toLocaleString('ko-KR');
             };
             
             const handleApprove = () => {
-                const reviewer = prompt('검토자 이름을 입력하세요:');
-                if (reviewer) {
-                    onApprove(approval.request_id, reviewer);
-                }
+                onApproveOpen && onApproveOpen(approval);
             };
             
             const handleReject = () => {
-                const reviewer = prompt('검토자 이름을 입력하세요:');
-                const reason = prompt('거부 사유를 입력하세요:');
-                if (reviewer && reason) {
-                    onReject(approval.request_id, reviewer, reason);
-                }
+                onRejectOpen && onRejectOpen(approval);
             };
             
             const getStatusBadge = () => {
@@ -1888,6 +1881,115 @@
             );
         };
         
+        // 승인/거부 모달 컴포넌트 (공용 스타일)
+        const DecisionModal = ({ show, mode, approval, onClose, onConfirm }) => {
+            const [reviewer, setReviewer] = useState('');
+            const [reason, setReason] = useState('');
+            const [submitting, setSubmitting] = useState(false);
+
+            useEffect(() => {
+                if (show) {
+                    setReviewer('');
+                    setReason('');
+                }
+            }, [show, approval?.request_id]);
+
+            if (!show || !approval) return null;
+
+            const isReject = mode === 'reject';
+            const title = isReject ? '❌ 승인 거부' : '✅ 승인 확정';
+            const primaryColor = isReject ? '#e53e3e' : '#38a169';
+
+            const handleConfirm = async (e) => {
+                e.preventDefault();
+                if (!reviewer.trim()) return;
+                if (isReject && !reason.trim()) return;
+                setSubmitting(true);
+                try {
+                    await onConfirm({
+                        requestId: approval.request_id,
+                        reviewer: reviewer.trim(),
+                        reason: isReject ? reason.trim() : undefined,
+                    });
+                    onClose();
+                } finally {
+                    setSubmitting(false);
+                }
+            };
+
+            return (
+                <div style={{
+                    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100
+                }}>
+                    <div style={{
+                        width: '96%', maxWidth: 520, background: 'white', borderRadius: 16,
+                        boxShadow: '0 20px 60px rgba(0,0,0,0.25)', overflow: 'hidden'
+                    }}>
+                        <div style={{ background: primaryColor, color: 'white', padding: '16px 20px', fontWeight: 700 }}>
+                            {title}
+                        </div>
+                        <form onSubmit={handleConfirm} style={{ padding: 20 }}>
+                            <div style={{ marginBottom: 14 }}>
+                                <div style={{ fontSize: 12, fontWeight: 700, color: '#4a5568', marginBottom: 6 }}>요청 정보</div>
+                                <div style={{
+                                    background: '#f7fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: 12,
+                                    lineHeight: 1.5, color: '#2d3748'
+                                }}>
+                                    <div style={{ fontWeight: 600 }}>{approval.title}</div>
+                                    <div style={{ fontSize: 12, opacity: 0.8, marginTop: 2 }}>{approval.request_id}</div>
+                                </div>
+                            </div>
+                            <div style={{ marginBottom: 12 }}>
+                                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#4a5568', marginBottom: 6 }}>승인자 이름</label>
+                                <input
+                                    type="text"
+                                    value={reviewer}
+                                    onChange={(e) => setReviewer(e.target.value)}
+                                    placeholder="예: 홍길동"
+                                    style={{
+                                        width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 8,
+                                        outline: 'none', fontSize: 14
+                                    }}
+                                />
+                            </div>
+                            {isReject && (
+                                <div style={{ marginBottom: 12 }}>
+                                    <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#4a5568', marginBottom: 6 }}>거부 사유</label>
+                                    <textarea
+                                        value={reason}
+                                        onChange={(e) => setReason(e.target.value)}
+                                        placeholder="거부 사유를 입력하세요"
+                                        rows={4}
+                                        style={{
+                                            width: '100%', padding: 12, border: '1px solid #e2e8f0', borderRadius: 8,
+                                            outline: 'none', fontSize: 14, resize: 'vertical'
+                                        }}
+                                    />
+                                </div>
+                            )}
+                            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 8 }}>
+                                <button type="button" onClick={onClose} disabled={submitting}
+                                    style={{
+                                        padding: '10px 16px', background: 'white', color: '#4a5568', border: '1px solid #e2e8f0',
+                                        borderRadius: 8, fontWeight: 700, cursor: submitting ? 'not-allowed' : 'pointer'
+                                    }}>
+                                    취소
+                                </button>
+                                <button type="submit" disabled={submitting || !reviewer.trim() || (isReject && !reason.trim())}
+                                    style={{
+                                        padding: '10px 16px', background: primaryColor, color: 'white', border: 'none',
+                                        borderRadius: 8, fontWeight: 700, cursor: (submitting || !reviewer.trim() || (isReject && !reason.trim())) ? 'not-allowed' : 'pointer'
+                                    }}>
+                                    {submitting ? '처리 중…' : (isReject ? '거부 확정' : '승인 확정')}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        };
+
         // 채팅 컴포넌트 제거
         
         // 메인 앱 컴포넌트
@@ -1915,6 +2017,8 @@
                 fetchRejectedApprovals,
                 refreshData
             } = useWebSocket();
+
+            const [decisionModal, setDecisionModal] = useState({ show: false, mode: 'approve', approval: null });
             
             useEffect(() => {
                 // 초기 로딩 시뮬레이션
@@ -2024,6 +2128,17 @@
                 } catch (error) {
                     console.error('거부 처리 오류:', error);
                     alert('거부 처리 중 오류가 발생했습니다.');
+                }
+            };
+
+            const openApproveModal = (approval) => setDecisionModal({ show: true, mode: 'approve', approval });
+            const openRejectModal = (approval) => setDecisionModal({ show: true, mode: 'reject', approval });
+            const closeDecisionModal = () => setDecisionModal({ show: false, mode: 'approve', approval: null });
+            const confirmDecision = async ({ requestId, reviewer, reason }) => {
+                if (decisionModal.mode === 'approve') {
+                    await handleApprove(requestId, reviewer);
+                } else {
+                    await handleReject(requestId, reviewer, reason || '사유 없음');
                 }
             };
             
@@ -2160,9 +2275,9 @@
                                             <ApprovalCard
                                                 key={approval.request_id}
                                                 approval={approval}
-                                                onApprove={handleApprove}
-                                                onReject={handleReject}
-                                                showActions={activeTab === 'pending'}
+                                                onApproveOpen={openApproveModal}
+                                                onRejectOpen={openRejectModal}
+                                                showActions={approval.status === 'pending'}
                                             />
                                         ))
                                     )}
@@ -2186,6 +2301,13 @@
                         show={showStartResearchModal}
                         onClose={() => setShowStartResearchModal(false)}
                         onSubmit={handleStartResearch}
+                    />
+                    <DecisionModal
+                        show={decisionModal.show}
+                        mode={decisionModal.mode}
+                        approval={decisionModal.approval}
+                        onClose={closeDecisionModal}
+                        onConfirm={confirmDecision}
                     />
                 </div>
             );

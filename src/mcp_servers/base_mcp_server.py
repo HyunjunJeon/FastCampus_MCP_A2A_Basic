@@ -8,9 +8,14 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any, Literal
 
+from fastmcp.server.http import StarletteWithLifespan
 from pydantic import BaseModel, Field, ConfigDict
 from starlette.requests import Request
 from starlette.responses import JSONResponse
+import time
+import os
+from redis import asyncio as aioredis
+from fastmcp.server.middleware import Middleware, MiddlewareContext
 
 
 class StandardResponse(BaseModel):
@@ -43,8 +48,6 @@ class BaseMCPServer(ABC):
     def __init__(
         self,
         server_name: str,
-        port: int,
-        host: str = "0.0.0.0",
         debug: bool = False,
         transport: Literal["streamable-http", "stdio"] = "streamable-http",
         server_instructions: str = "",
@@ -64,8 +67,6 @@ class BaseMCPServer(ABC):
         """
         from fastmcp import FastMCP
 
-        self.host = host
-        self.port = port
         self.debug = debug
         self.transport = transport
         self.server_instructions = server_instructions
@@ -82,6 +83,9 @@ class BaseMCPServer(ABC):
 
         # 도구 등록
         self._register_tools()
+
+        # 필수 미들웨어 기본 추가
+        self._install_core_middlewares()
 
     @abstractmethod
     def _initialize_clients(self) -> None:
@@ -148,7 +152,7 @@ class BaseMCPServer(ABC):
 
         return error_model.model_dump(exclude_none=True)
 
-    def create_app(self) -> Any:
+    def create_app(self) -> StarletteWithLifespan:
         """
         ASGI 앱을 생성합니다.
         - /health 라우트를 1회만 등록합니다.
@@ -165,7 +169,134 @@ class BaseMCPServer(ABC):
                 return JSONResponse(content=response_data)
             setattr(self, "_health_route_registered", True)
 
-        return self.mcp.http_app(path=self.MCP_PATH)
+        return self.mcp.http_app(
+            path=self.MCP_PATH,
+            json_response=self.json_response,
+        )
+
+    # -------------------------
+    # Core Middlewares
+    # -------------------------
+    def _install_core_middlewares(self) -> None:
+        """필수 코어 미들웨어 설치 (에러 처리, 로깅, 타이밍, 레이트리밋)."""
+        self.mcp.add_middleware(self.ErrorHandlingMiddleware())
+        self.mcp.add_middleware(self.RateLimitingMiddleware.from_env())
+        self.mcp.add_middleware(self.TimingMiddleware())
+        self.mcp.add_middleware(self.LoggingMiddleware())
+
+    class ErrorHandlingMiddleware(Middleware):
+        async def on_call_tool(self, context: MiddlewareContext, call_next):
+            try:
+                return await call_next()
+            except Exception as error:  # noqa: BLE001
+                # 표준화된 에러 응답 형태로 변환을 시도
+                try:
+                    server = context.fastmcp_context.fastmcp
+                    logger = getattr(server, "logger", None)
+                    if logger:
+                        logger.error(f"Tool error: {error}", exc_info=True)
+                except Exception:
+                    pass
+                # FastMCP는 예외를 전파해도 클라이언트에 적절히 전달됨
+                raise
+
+    class TimingMiddleware(Middleware):
+        async def on_call_tool(self, context: MiddlewareContext, call_next):
+            start = time.perf_counter()
+            try:
+                return await call_next()
+            finally:
+                duration_ms = (time.perf_counter() - start) * 1000.0
+                try:
+                    context.fastmcp_context.set_state("duration_ms", duration_ms)
+                except Exception:
+                    pass
+
+    class LoggingMiddleware(Middleware):
+        async def on_call_tool(self, context: MiddlewareContext, call_next):
+            try:
+                server = context.fastmcp_context.fastmcp
+                logger = getattr(server, "logger", None)
+                if logger:
+                    meta = {
+                        "request_id": getattr(context.fastmcp_context, "request_id", None),
+                        "client_id": getattr(context.fastmcp_context, "client_id", None),
+                        "session_id": getattr(context.fastmcp_context, "session_id", None),
+                    }
+                    logger.info(f"Tool call start: {meta}")
+                result = await call_next()
+                if logger:
+                    duration_ms = context.fastmcp_context.get_state("duration_ms")
+                    logger.info(f"Tool call end: duration_ms={duration_ms}")
+                return result
+            except Exception:
+                raise
+
+    class RateLimitingMiddleware(Middleware):
+        """간단한 Redis 기반 레이트 리밋 (슬라이딩 윈도우/고정 윈도우 혼합).
+
+        환경 변수:
+          - REDIS_URL: redis 접속 URL (기본: redis://redis:6379/0)
+          - MCP_RATE_LIMIT_RPS: 초당 최대 요청 수 (기본: 50)
+          - MCP_RATE_LIMIT_BURST: 버스트 허용량 (기본: RPS)
+        """
+
+        def __init__(self, redis_url: str, rps: int = 50, burst: int | None = None):
+            self.redis_url = redis_url
+            self.rps = max(1, int(rps))
+            self.burst = int(burst) if burst is not None else self.rps
+            self._pool = None
+
+        @classmethod
+        def from_env(cls) -> "BaseMCPServer.RateLimitingMiddleware":
+            redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
+            rps = int(os.getenv("MCP_RATE_LIMIT_RPS", "50"))
+            burst = os.getenv("MCP_RATE_LIMIT_BURST")
+            burst_i = int(burst) if burst is not None else None
+            return cls(redis_url=redis_url, rps=rps, burst=burst_i)
+
+        async def _acquire(self):
+            if self._pool is None:
+                self._pool = await aioredis.from_url(self.redis_url, encoding="utf-8", decode_responses=True)
+            return self._pool
+
+        async def on_call_tool(self, context: MiddlewareContext, call_next):
+            try:
+                redis = await self._acquire()
+
+                # 키: 초 단위 고정 윈도우 + 버스트 토큰 관리
+                now = int(time.time())
+                key_counter = f"mcp:rate:cnt:{now}"
+                key_tokens = "mcp:rate:tokens"
+
+                pipe = redis.pipeline()
+                pipe.incr(key_counter, 1)
+                pipe.expire(key_counter, 2)
+                current, _ = await pipe.execute()
+
+                # 카운터 기반 즉시 차단
+                if int(current) > (self.rps + self.burst):
+                    raise RuntimeError("Rate limit exceeded")
+
+                # 간단 토큰 버킷: 매 초 rps 만큼 토큰 충전, 최대 burst 유지
+                async with redis.pipeline(transaction=True) as p:
+                    await p.watch(key_tokens)
+                    tokens = await redis.get(key_tokens)
+                    tokens = int(tokens) if tokens is not None else self.burst
+                    # 충전
+                    tokens = min(self.burst, tokens + self.rps)
+                    if tokens <= 0:
+                        await p.unwatch()
+                        raise RuntimeError("Rate limit exceeded")
+                    # 1 토큰 사용
+                    tokens -= 1
+                    p.multi()
+                    p.set(key_tokens, tokens, ex=2)
+                    await p.execute()
+
+                return await call_next()
+            except Exception:
+                raise
 
 
 

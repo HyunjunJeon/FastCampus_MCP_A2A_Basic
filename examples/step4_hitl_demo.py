@@ -41,16 +41,20 @@ from dotenv import load_dotenv
 # 프로젝트 루트 디렉토리 설정
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(PROJECT_ROOT)
+# src 패키지를 직접 임포트할 수 있도록 보조 경로 추가 (예: from a2a_integration ... 호환)
+src_path = os.path.join(PROJECT_ROOT, "src")
+if src_path not in sys.path:
+    sys.path.append(src_path)
 
 # 프로젝트 루트의 .env 파일 로드
 load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
-# Step4 기본값: HITL 활성화 (ENV 미설정 시)
-os.environ.setdefault("ENABLE_HITL", "1")
+# Step4 데모에서는 내부 그래프의 HITL을 비활성화하고
+# UI에서 단일 승인 루프만 관리하도록 한다 (중복 승인 방지)
+os.environ.setdefault("ENABLE_HITL", "0")
 os.environ.setdefault("HITL_MODE", os.environ.get("HITL_MODE", "external"))
 # Step4: 초기 명확화 질문은 건너뛰고 바로 연구/보고서 생성으로 진행
 os.environ.setdefault("ALLOW_CLARIFICATION", "0")
 
-import aiohttp
 from a2a.types import AgentSkill
 
 # HITL 컴포넌트 임포트
@@ -67,6 +71,7 @@ from src.lg_agents.deep_research.deep_research_agent_a2a import (
 )
 from src.lg_agents.deep_research.supervisor_graph import build_supervisor_subgraph
 from src.lg_agents.deep_research.researcher_graph import researcher_graph
+from src.utils.http_client import http_client
 
 async def start_hitl_server():
     """HITL 웹 서버 자동 시작"""
@@ -110,14 +115,13 @@ async def start_hitl_server():
 
             # 서버 응답 확인
             try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(
-                        "http://localhost:8000/health",
-                        timeout=aiohttp.ClientTimeout(total=2),
-                    ) as resp:
-                        if resp.status == 200:
-                            print(f"✅ HITL 웹 서버 정상 시작됨 ({i + 1}초 소요)")
-                            return process
+                resp = await http_client.get(
+                    "http://localhost:8000/health",
+                    timeout=2,
+                )
+                if resp.status_code == 200:
+                    print(f"✅ HITL 웹 서버 정상 시작됨 ({i + 1}초 소요)")
+                    return process
             except Exception:
                 pass
 
@@ -251,15 +255,14 @@ async def start_hitl_a2a_servers():
         try:
             deep_url = d_info.get("base_url", f"http://localhost:{d_port}")
             os.environ["HITL_DEEP_RESEARCH_A2A_URL"] = deep_url
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    f"{deep_url}/.well-known/agent-card.json",
-                    timeout=aiohttp.ClientTimeout(total=5),
-                ) as resp:
-                    if resp.status == 200:
-                        print(f"✅ DeepResearch A2A 헬스체크 성공: {deep_url}")
-                    else:
-                        print(f"⚠️ DeepResearch A2A 헬스체크 비정상 응답: HTTP {resp.status}")
+            resp = await http_client.get(
+                f"{deep_url}/.well-known/agent-card.json",
+                timeout=5,
+            )
+            if resp.status_code == 200:
+                print(f"✅ DeepResearch A2A 헬스체크 성공: {deep_url}")
+            else:
+                print(f"⚠️ DeepResearch A2A 헬스체크 비정상 응답: HTTP {resp.status_code}")
         except Exception as e:
             print(f"⚠️ DeepResearch A2A 헬스체크 실패: {e}")
     except Exception as e:
@@ -292,14 +295,14 @@ async def check_system_status():
 
     # HITL API 확인 및 자동 시작
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                "http://localhost:8000/health", timeout=aiohttp.ClientTimeout(total=3)
-            ) as resp:
-                if resp.status == 200:
-                    print("✅ HITL API: 정상")
-                else:
-                    print("❌ HITL API: 응답 오류")
+        resp = await http_client.get(
+            "http://localhost:8000/health", 
+            timeout=5,
+        )
+        if resp.status_code == 200:
+            print("✅ HITL API: 정상")
+        else:
+            print("❌ HITL API: 응답 오류")
     except Exception:
         print("⚠️  HITL API: 연결 실패 - 자동 시작 시도")
         hitl_server_process = await start_hitl_server()
@@ -311,21 +314,20 @@ async def check_system_status():
     # A2A Agents 확인 (Supervisor:8090, Researcher:8091, Deep(HITL):8092)
     async def _check(url: str, name: str):
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    url,
-                    timeout=aiohttp.ClientTimeout(total=3),
-                ) as resp:
-                    if resp.status == 200:
-                        print(f"✅ {name}: 정상")
-                    else:
-                        print(f"❌ {name}: 응답 오류")
+            resp = await http_client.get(
+                url,
+                timeout=5,
+            )
+            if resp.status_code == 200:
+                print(f"✅ {name}: 정상")
+            else:
+                print(f"❌ {name}: 응답 오류")
         except Exception:
             print(f"❌ {name}: 연결 실패")
 
     await _check("http://localhost:8092/.well-known/agent-card.json", "Supervisor A2A")
     await _check("http://localhost:8091/.well-known/agent-card.json", "Researcher A2A")
-    await _check("http://localhost:8090/.well-known/agent-card.json", "Deep(HITL) A2A")
+    await _check("http://localhost:8090/.well-known/agent-card.json", "DeepResearch Control(HITL) A2A")
 
     return hitl_server_process
 
@@ -428,7 +430,7 @@ async def a2a_deepresearch_hitl():
             priority="high",
         )
 
-        print("\n⏳ 승인 대기 중... (대시보드에서 승인/거절하세요)")
+        print("\n⏳ 승인 대기 중... (UI(localhost:8000)에서 승인/거절하세요)")
         decision = await hitl_manager.wait_for_approval(request.request_id, auto_approve_on_timeout=False)
 
         while decision and getattr(decision, "status", None) and getattr(decision.status, "value", "") == "rejected" and revision_count < max_loops:

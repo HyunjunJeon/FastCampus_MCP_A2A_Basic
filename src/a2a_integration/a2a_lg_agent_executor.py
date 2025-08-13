@@ -536,6 +536,45 @@ class LangGraphWrappedA2AExecutor(AgentExecutor):
 
             gen = self.graph.astream(invoke_input, config=config)
 
+            # 스트림 전 구간에서 발견되는 구조화 데이터를 누적 수집한다
+            # (일부 그래프는 마지막 청크에 최종 상태가 실리지 않아 notes가 손실될 수 있음)
+            def _merge_structured_dicts(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
+                merged: dict[str, Any] = dict(a or {})
+                if not isinstance(b, dict):
+                    return merged
+                for k, v in b.items():
+                    if k not in merged:
+                        merged[k] = v
+                        continue
+                    prev = merged[k]
+                    # 리스트는 순서를 유지하면서 문자열 기준 중복 제거
+                    if isinstance(prev, list) and isinstance(v, list):
+                        seen: set[str] = set()
+                        combined: list[Any] = []
+                        def _as_key(item: Any) -> str:
+                            try:
+                                if isinstance(item, (str, int, float, bool)) or item is None:
+                                    return str(item)
+                                return __import__("json").dumps(item, sort_keys=True, default=str)
+                            except Exception:
+                                return str(item)
+                        for item in prev + v:
+                            key = _as_key(item)
+                            if key in seen:
+                                continue
+                            seen.add(key)
+                            combined.append(item)
+                        merged[k] = combined
+                    # dict는 재귀 병합
+                    elif isinstance(prev, dict) and isinstance(v, dict):
+                        merged[k] = _merge_structured_dicts(prev, v)
+                    else:
+                        # 스칼라/타입 불일치: 최신 값으로 덮어씀
+                        merged[k] = v
+                return merged
+
+            structured_accumulated: dict[str, Any] = {}
+
             # 하트비트 주기 (초). 0 또는 음수면 비활성화
             try:
                 heartbeat_interval = float(os.getenv("A2A_HEARTBEAT_INTERVAL_S", "5"))
@@ -628,6 +667,14 @@ class LangGraphWrappedA2AExecutor(AgentExecutor):
                     except Exception:
                         pass
                     return
+
+                # 0.5) 스트림 청크에서 구조화 가능한 데이터 누적
+                try:
+                    chunk_struct = self._extract_structured_output(chunk)
+                    if chunk_struct:
+                        structured_accumulated = _merge_structured_dicts(structured_accumulated, chunk_struct)
+                except Exception:
+                    pass
 
                 try:
                     partial_text = self._extract_ai_text_for_stream(chunk) or ""
@@ -734,16 +781,13 @@ class LangGraphWrappedA2AExecutor(AgentExecutor):
             except Exception:
                 pass
 
-            # 구조화 가능한 결과(예: notes, research_brief)를 별도 DataPart로 제공
+            # 구조화 가능한 결과(예: notes, raw_notes, research_brief, final_report)를 별도 DataPart로 제공
             try:
-                structured_payload = self._extract_structured_output(last_result or {})
+                # 누적 수집된 구조화 데이터가 있으면 우선 사용하며,
+                # 클라이언트 병합의 편의를 위해 최상위 키로 바로 내보낸다.
+                structured_payload = dict(structured_accumulated) if structured_accumulated else self._extract_structured_output(last_result or {})
                 if structured_payload:
-                    await updater.add_artifact([
-                        Part(root=DataPart(data={
-                            "content_type": "application/json",
-                            "structured": structured_payload
-                        }))
-                    ])
+                    await updater.add_artifact([Part(root=DataPart(data=structured_payload))])
             except Exception:
                 # 구조 데이터가 직렬화 불가한 경우 무시하고 텍스트만 제공
                 pass

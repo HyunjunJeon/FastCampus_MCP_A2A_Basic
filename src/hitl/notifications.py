@@ -6,12 +6,12 @@ import asyncio
 import logging
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
-import aiohttp
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 from .models import ApprovalRequest
+from src.utils.http_client import http_client
 
 logger = logging.getLogger(__name__)
 
@@ -165,17 +165,21 @@ class SlackNotificationChannel(NotificationChannel):
             if self.channel:
                 message["channel"] = self.channel
 
-            # Slack 전송
-            async with aiohttp.ClientSession() as session:
-                async with session.post(self.webhook_url, json=message) as response:
-                    success = response.status == 200
+            # Slack 전송 (공통 http 클라이언트 사용)
+            response = await http_client.post(self.webhook_url, json=message)
+            success = response.status_code == 200
 
-                    if success:
-                        logger.info(f"Slack 알림 전송 완료: {request.request_id}")
-                    else:
-                        logger.error(f"Slack 전송 실패: {response.status}")
+            if success:
+                logger.info(f"Slack 알림 전송 완료: {request.request_id}")
+            else:
+                try:
+                    logger.error(
+                        f"Slack 전송 실패: status={response.status_code} body={response.text}"
+                    )
+                except Exception:
+                    logger.error(f"Slack 전송 실패: status={response.status_code}")
 
-                    return success
+            return success
 
         except Exception as e:
             logger.error(f"Slack 알림 전송 오류: {e}")

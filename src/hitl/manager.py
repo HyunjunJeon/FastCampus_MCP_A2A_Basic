@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from .models import ApprovalRequest, ApprovalStatus, ApprovalType, HITLPolicy
 from .storage import approval_storage
 from .notifications import NotificationService
+from src.utils.http_client import http_client
 
 logger = logging.getLogger(__name__)
 
@@ -269,20 +270,18 @@ class HITLManager:
             from a2a.client import ClientFactory, A2ACardResolver, ClientConfig
             from a2a.client.helpers import create_text_message_object
             from a2a.types import TransportProtocol, Role
-            import httpx
             
             logger.info(f"A2A Deep Research 시작: {query}")
             
-            # httpx 클라이언트 생성
-            http_client = httpx.AsyncClient()
-            
+            # 공통 HTTP 클라이언트 세션 사용
             try:
                 # A2A Card Resolver로 agent card 가져오기
-                resolver = A2ACardResolver(
-                    httpx_client=http_client,
-                    base_url="http://localhost:8090",
-                )
-                agent_card = await resolver.get_agent_card()
+                async with http_client.session() as _hc:
+                    resolver = A2ACardResolver(
+                        httpx_client=_hc,
+                        base_url="http://localhost:8090",
+                    )
+                    agent_card = await resolver.get_agent_card()
                 
                 # Client 설정 및 생성
                 config = ClientConfig(

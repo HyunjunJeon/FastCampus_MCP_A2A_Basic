@@ -3,13 +3,12 @@ A2A Client Utilities - A2A 클라이언트 0.3.0 기준
 """
 
 from typing import Any
-
-import httpx
 from a2a.types import AgentCard, Message, Role, TransportProtocol, DataPart, Part
 from a2a.client import A2ACardResolver, ClientConfig, ClientFactory, A2AClientError
 from a2a.client.helpers import create_text_message_object
 from uuid import uuid4
 from src.utils.logging_config import get_logger
+from src.utils.http_client import http_client
 
 logger = get_logger(__name__)
 
@@ -54,9 +53,9 @@ class A2AClientManager:
         - 스트리밍/전송 프로토콜 설정 후 실제 전송 클라이언트 생성
         - 호출자는 컨텍스트 매니저(`async with`) 사용을 권장
         """
-        self._httpx_client = httpx.AsyncClient()
+        # 공통 HTTP 클라이언트 세션을 사용해 Agent Card를 1회 조회
         resolver = A2ACardResolver(
-            httpx_client=self._httpx_client,
+            httpx_client=http_client,
             base_url=self.base_url,
         )
         self.agent_card: AgentCard = await resolver.get_agent_card()

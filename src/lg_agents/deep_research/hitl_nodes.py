@@ -135,12 +135,11 @@ async def hitl_final_approval(
 
 
 async def revise_final_report(state: HITLAgentState, config: RunnableConfig):
-    """사람 피드백을 반영하여 최종 보고서를 개정
+    """사람 피드백을 반영하여 '자료조사 → 분석 → 보고서' 전 과정을 다시 수행
 
-    - revision_count를 증가시키고, 한도를 초과하면 종료
-    - 개정된 보고서를 생성 후 다시 승인 요청 단계로 이동
-    - 최종 보고서 생성 로직은 기존 `final_report_generation`과 동일 경로를 사용해
-      프롬프트 및 모델 구성을 일관화합니다.
+    - 기존 구현은 보고서만 재작성하여 조사 없이 글만 바뀌는 문제가 있었음
+    - 개정 루프에서는 Supervisor 단계로 되돌려 ConductResearch를 다시 실행하도록 유도
+    - 강건성을 위해 기존 노트/원시노트를 초기화하고, 연구 계획(research_brief)에 피드백을 주입
     """
     configurable = ResearchConfig.from_runnable_config(config)
     max_loops = getattr(configurable, "max_revision_loops", 2)
@@ -150,33 +149,25 @@ async def revise_final_report(state: HITLAgentState, config: RunnableConfig):
         logger.warning("개정 한도 초과, 종료합니다.")
         return {"revision_count": current_count, "final_report": state.get("final_report", "")}
 
-    feedback = state.get("human_feedback") or ""
+    feedback = (state.get("human_feedback") or "").strip()
 
-    prev_messages = state.get("messages", [])
-    feedback_msg = HumanMessage(
-        content=(
-            "[HITL 피드백] "
-            + feedback
-            + "\n\n위 피드백을 반영해 전체 보고서를 개선해 주세요."
-        )
-    )
+    # 연구 계획에 피드백을 주입하여 Supervisor가 재조사를 수행하도록 유도
+    orig_brief = state.get("research_brief", "") or ""
+    revised_brief = (
+        f"{orig_brief}\n\n[Reviewer Feedback]\n{feedback}\n\n"
+        "위 피드백을 반영하여 필요한 자료 조사를 다시 수행하고, 결과를 종합해 새로운 최종 보고서를 작성하세요."
+    ).strip()
 
-    existing_notes = state.get("notes", []) or []
-    provisional_notes = existing_notes if existing_notes else [state.get("final_report", "")]
+    # 이전 조사 산출물은 초기화하여 새 조사 결과만 반영되도록 한다
+    cleared_notes = {"type": "override", "value": []}
 
-    temp_state = dict(state)
-    temp_state["messages"] = list(prev_messages) + [feedback_msg]
-    temp_state["notes"] = provisional_notes
-
-    improved_update = await final_report_generation(temp_state, config)
-
-    combined_messages = [feedback_msg] + improved_update.get("messages", [])
-
+    # Supervisor 단계로 되돌아가 재조사 → 압축 → 최종 보고서 → 승인 루프를 다시 밟는다
     return Command(
-        goto="hitl_final_approval",
+        goto="research_supervisor",
         update={
-            **{k: v for k, v in improved_update.items() if k != "messages"},
-            "messages": combined_messages,
+            "research_brief": revised_brief,
+            "notes": cleared_notes,
+            "raw_notes": cleared_notes,
             "revision_count": current_count + 1,
         },
     )

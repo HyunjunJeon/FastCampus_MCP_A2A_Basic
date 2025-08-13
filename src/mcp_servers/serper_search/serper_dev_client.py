@@ -1,7 +1,6 @@
 import logging
 import os
 from typing import Any
-import httpx
 from pydantic import BaseModel, Field
 
 # 환경 변수 검증 시스템 사용
@@ -127,13 +126,14 @@ class SerperClient:
         # Serper.dev API 기본 URL
         self.base_url = "https://google.serper.dev"
         
-        # 비동기 HTTP 클라이언트 초기화
-        self.client = httpx.AsyncClient(
-            timeout=30.0,  # 30초 타임아웃
+        # 비동기 HTTP 클라이언트 초기화 (공통 클라이언트 풀 사용)
+        from src.utils.http_client import http_client as _hc
+        self.client = _hc.get_client(
             headers={
-                "X-API-KEY": self.api_key,  # Serper API 키 헤더
-                "Content-Type": "application/json"  # JSON 콘텐츠 타입
-            }
+                "X-API-KEY": self.api_key,
+                "Content-Type": "application/json",
+            },
+            client_id="serper_http",
         )
     
     async def search(
@@ -340,4 +340,9 @@ class SerperClient:
         비동기 HTTP 클라이언트의 연결을 안전하게 종료하고
         관련 리소스를 해제합니다. 서버 종료 시 반드시 호출되어야 합니다.
         """
-        await self.client.aclose()
+        try:
+            # 공통 풀에서 만든 클라이언트는 전역 정리 루틴으로 닫힌다.
+            # 여기서는 안전하게 무시하거나 필요 시 개별 종료를 시도한다.
+            await self.client.aclose()
+        except Exception:
+            pass
