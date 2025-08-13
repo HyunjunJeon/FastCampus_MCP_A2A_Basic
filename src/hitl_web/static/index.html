@@ -1077,7 +1077,7 @@
                         {approval.description}
                     </div>
                     
-                    {approval.reason && (
+                    {approval.decision_reason && (
                         <div style={{
                             background: 'rgba(245, 101, 101, 0.1)',
                             border: '1px solid #fed7d7',
@@ -1086,7 +1086,7 @@
                             marginTop: '15px'
                         }}>
                             <div style={{fontSize: '0.8rem', color: '#c53030', fontWeight: '600', marginBottom: '4px'}}>거부 사유</div>
-                            <div style={{color: '#2d3748'}}>{approval.reason}</div>
+                            <div style={{color: '#2d3748'}}>{approval.decision_reason}</div>
                         </div>
                     )}
                     
@@ -1126,7 +1126,7 @@
                         </div>
                     )}
                     
-                    {!showActions || approval.status !== 'pending' && (
+                    {(!showActions || approval.status !== 'pending') && (
                         <div className="action-buttons">
                             <button className="btn btn-details" style={{flex: 'none', width: 'auto'}} onClick={async () => {
                                 try {

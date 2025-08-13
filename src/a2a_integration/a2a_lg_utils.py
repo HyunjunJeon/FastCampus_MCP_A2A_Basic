@@ -8,6 +8,10 @@
 from __future__ import annotations
 
 from typing import Any, Callable, Iterable
+import os
+import hmac
+import hashlib
+import time
 
 import httpx
 from a2a.server.apps import A2AStarletteApplication
@@ -20,15 +24,82 @@ from a2a.server.tasks import (
 from a2a.types import AgentCapabilities, AgentCard, AgentSkill
 from langgraph.graph.state import CompiledStateGraph
 from a2a.server.agent_execution import AgentExecutor
+from src.utils.http_client import http_client
 
 
 # TODO: "image/png", "audio/mpeg", "video/mp4"
-SUPPORTED_CONTENT_MIME_TYPES = ["text/plain"]
+# A2A 권장 최소 출력 모드 확장
+SUPPORTED_CONTENT_MIME_TYPES = [
+    "text/plain",
+    "text/markdown",
+    "application/json",
+]
 
 
 def _build_request_handler(executor: AgentExecutor) -> DefaultRequestHandler:
-    """DefaultRequestHandler 기반의 구성"""
-    httpx_client = httpx.AsyncClient()
+    """DefaultRequestHandler 기반의 구성
+
+    - 공용 HTTP 풀을 재사용해 커넥션 누수를 방지한다.
+    """
+    # 공용 httpx 풀 재사용 (종료 시 cleanup_http_clients로 일괄 정리)
+    httpx_client = http_client.get_client(client_id="a2a_push_http")
+
+    # Push Notification egress allowlist 가드 설치 (SSRF 완화)
+    # A2A 권장 보안 가이드 참고: 허용된 도메인/호스트만 푸시 전송 허용
+    try:
+        allow_env = os.getenv("A2A_PUSH_WEBHOOK_ALLOWLIST", "localhost,127.0.0.1")
+        allow_hosts = [h.strip().lower() for h in allow_env.split(",") if h.strip()]
+
+        async def _egress_guard(request):
+            try:
+                host = (request.url.host or "").lower()
+                if not host:
+                    return
+                allowed = any(
+                    host == ah or (host.endswith("." + ah) if "." in host else False)
+                    for ah in allow_hosts
+                )
+                if not allowed:
+                    raise httpx.RequestError(
+                        f"Blocked by A2A push egress allowlist: {host}", request=request
+                    )
+            except Exception:
+                # 방어적: 훅에서 예외가 나도 요청을 막아 SSRF를 억제
+                raise
+
+        hooks = getattr(httpx_client, "event_hooks", None)
+        if hooks is not None:
+            req_hooks = hooks.get("request") or []
+            if _egress_guard not in req_hooks:
+                req_hooks.append(_egress_guard)
+            # 인증 헤더 주입: 토큰/HMAC 서명 (선택)
+            default_token = os.getenv("A2A_PUSH_DEFAULT_TOKEN")
+            hmac_secret = os.getenv("A2A_PUSH_HMAC_SECRET")
+
+            async def _auth_injector(request):
+                try:
+                    if default_token:
+                        request.headers.setdefault("X-A2A-Notification-Token", default_token)
+                    if hmac_secret:
+                        ts = str(int(time.time()))
+                        body = request.content or b""
+                        if not isinstance(body, (bytes, bytearray)):
+                            try:
+                                body = bytes(body)
+                            except Exception:
+                                body = b""
+                        mac = hmac.new(hmac_secret.encode(), body + ts.encode(), hashlib.sha256).hexdigest()
+                        request.headers.setdefault("X-A2A-Timestamp", ts)
+                        request.headers.setdefault("X-A2A-Signature", f"sha256={mac}")
+                except Exception:
+                    pass
+
+            if _auth_injector not in req_hooks:
+                req_hooks.append(_auth_injector)
+            hooks["request"] = req_hooks
+    except Exception:
+        # 훅 설치 실패 시에도 서버 동작은 지속
+        pass
     # **DO NOT USE PRODUCTION**
     # TODO: MQ 기반 푸시 알림 구현 필요
     push_config_store = InMemoryPushNotificationConfigStore()
@@ -36,9 +107,21 @@ def _build_request_handler(executor: AgentExecutor) -> DefaultRequestHandler:
         httpx_client=httpx_client, 
         config_store=push_config_store
     )
+    # TaskStore 선택: 환경변수로 Redis 전환 지원
+    task_store = InMemoryTaskStore()
+    try:
+        use_redis = os.getenv("A2A_TASK_STORE", "memory").strip().lower() == "redis"
+        if use_redis:
+            from .redis_task_store import RedisTaskStore
+            redis_url = os.getenv("A2A_TASK_REDIS_URL", "redis://localhost:6379/0")
+            ttl = int(os.getenv("A2A_TASK_TTL_SECONDS", "0") or "0")
+            task_store = RedisTaskStore(redis_url=redis_url, ttl_seconds=ttl)
+    except Exception:
+        pass
+
     return DefaultRequestHandler(
         agent_executor=executor,
-        task_store=InMemoryTaskStore(), # TODO: 메모리 기반이 아닌 데이터베이스 기반으로 변경 필요
+        task_store=task_store,
         push_config_store=push_config_store,
         push_sender=push_sender,
     )

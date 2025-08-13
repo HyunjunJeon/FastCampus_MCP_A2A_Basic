@@ -288,11 +288,14 @@ async def run_a2a_with_tracking(query: str) -> Tuple[Dict[str, Any], Performance
         
         # A2A Client 생성
         tracker.log_event("stage_start", "client_setup")
-        resolver = A2ACardResolver(
-            httpx_client=httpx.AsyncClient(),
-            base_url="http://localhost:8092",
-        )
-        agent_card: AgentCard = await resolver.get_agent_card()
+        # httpx.AsyncClient는 with 블록으로 수명 주기를 좁혀 커넥션 누수 방지
+        async with httpx.AsyncClient() as aio:
+            resolver = A2ACardResolver(
+                httpx_client=aio,
+                base_url="http://localhost:8092",
+            )
+            agent_card: AgentCard = await resolver.get_agent_card()
+        # resolver.get_agent_card() 이후에는 ClientFactory가 내부 클라이언트를 관리
         config = ClientConfig(
             streaming=True,
             supported_transports=[TransportProtocol.jsonrpc, TransportProtocol.http_json, TransportProtocol.grpc],
@@ -335,10 +338,11 @@ async def run_a2a_with_tracking(query: str) -> Tuple[Dict[str, Any], Performance
                     for artifact in task.artifacts:
                         if hasattr(artifact, 'parts') and artifact.parts:
                             for part in artifact.parts:
-                                if hasattr(part, 'root') and hasattr(part.root, 'text'):
-                                    text_content = part.root.text
+                                root = getattr(part, 'root', None)
+                                text_content = getattr(root, 'text', None)
+                                if isinstance(text_content, str):
                                     if text_content not in response_text:
-                                        response_text += text_content + "\n"  # step2 패턴: 개행 문자 추가
+                                        response_text += text_content + "\n"
                 
                 # Task history에서 중간 메시지들 확인 (진행 과정)
                 if hasattr(task, 'history') and task.history:
@@ -349,16 +353,15 @@ async def run_a2a_with_tracking(query: str) -> Tuple[Dict[str, Any], Performance
                         hasattr(last_message, 'parts') and last_message.parts):
                         
                         for part in last_message.parts:
-                            if hasattr(part, 'root') and hasattr(part.root, 'text'):
-                                text_content = part.root.text
-                                # 이미 출력된 내용인지 확인
-                                if text_content not in response_text:
-                                    response_text += text_content + "\n"  # step2 패턴 적용
-                                    step_events.append({
-                                        "timestamp": time.time() - tracker.start_time,
-                                        "event": text_content
-                                    })
-                                    print(f"[A2A 진행] {text_content}")
+                            root = getattr(part, 'root', None)
+                            text_content = getattr(root, 'text', None)
+                            if isinstance(text_content, str) and text_content not in response_text:
+                                response_text += text_content + "\n"
+                                step_events.append({
+                                    "timestamp": time.time() - tracker.start_time,
+                                    "event": text_content
+                                })
+                                print(f"[A2A 진행] {text_content}")
         
         tracker.log_event("stage_end", "a2a_request")        
         tracker.log_event("system_end", "A2A_Client")

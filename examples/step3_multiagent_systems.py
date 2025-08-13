@@ -221,8 +221,9 @@ class MultiAgentSystemLauncher:
                 )
             ]
             
-            # 고정 포트/호스트로 시작하여 AgentCard.url과 일치시킴
-            port = 8092
+            # 포트 배치: Supervisor=8092, Researcher=8091, DeepResearch=8090
+            # DeepResearch는 내부에서 Supervisor를 기본 http://localhost:8092로 호출
+            port = 8090
             host = "0.0.0.0"  # 바인딩 호스트
             card_host = "localhost"  # 클라이언트 접속 호스트
             agent_card = create_agent_card(
@@ -297,6 +298,7 @@ class MultiAgentSystemLauncher:
                     examples=["Plan and coordinate multiple research units"],
                 )
             ]
+            s_port = 8092
             supervisor_card = create_agent_card(
                 name="Supervisor Agent",
                 description="Supervisor graph wrapped as A2A",

@@ -88,14 +88,18 @@ class OptimizedHTTPClient:
             return self._clients[client_id]
 
         # 새 클라이언트 생성
-        client = AsyncClient(
-            base_url=base_url,
+        common_kwargs = dict(
             headers=headers or {},
             timeout=timeout or self.default_timeout,
             limits=limits or self.default_limits,
             follow_redirects=True,
-            http2=True,  # HTTP/2 지원
+            http2=False,
         )
+        if isinstance(base_url, str) and base_url:
+            client = AsyncClient(base_url=base_url, **common_kwargs)
+        else:
+            # base_url이 None/빈 문자열이면 전달하지 않음 (httpx가 None을 허용하지 않음)
+            client = AsyncClient(**common_kwargs)
 
         # 클라이언트 저장
         self._clients[client_id] = client
@@ -173,7 +177,15 @@ class OptimizedHTTPClient:
         Raises:
             ExternalAPIError: API 호출 실패
         """
-        client = self.get_client(client_id=client_id or url)
+        # 동일 호스트로의 요청은 하나의 커넥션 풀을 최대한 재사용하도록 client_id를 호스트 기준으로 설정
+        import urllib.parse as _up
+        try:
+            parsed = _up.urlparse(url)
+            host_id = f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else url
+        except Exception:
+            host_id = url
+
+        client = self.get_client(client_id=client_id or host_id)
 
         try:
             response = await client.request(method, url, **kwargs)

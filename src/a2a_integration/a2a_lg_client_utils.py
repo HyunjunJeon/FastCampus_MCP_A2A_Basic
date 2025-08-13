@@ -163,7 +163,7 @@ class A2AClientManager:
                 new_text = self._merge_incremental_text(response_text, text_content)
                 delta = self._compute_delta(response_text, new_text)
                 if delta:
-                    logger.info(delta)
+                    logger.debug(delta)
                 response_text = new_text
             if not had_text:
                 # 호환성: 단일 텍스트 추출 경로도 유지
@@ -172,14 +172,21 @@ class A2AClientManager:
                     new_text = self._merge_incremental_text(response_text, text_content)
                     delta = self._compute_delta(response_text, new_text)
                     if delta:
-                        logger.info(delta)
+                        logger.debug(delta)
                     response_text = new_text
 
             # 2) DataPart(JSON) 추출
             for data_obj in self._iter_data_from_event(event):
+                # heartbeat 형태의 DataPart는 수집/로깅에서 제외하여 로그 스팸과 메모리 사용을 줄인다
+                try:
+                    if isinstance(data_obj, dict) and ("heartbeat" in data_obj):
+                        continue
+                except Exception:
+                    pass
+
                 collected_data_parts.append(data_obj)
                 try:
-                    logger.info(f"A2A DataPart 수신: keys={list(data_obj.keys())}")
+                    logger.debug(f"A2A DataPart 수신: keys={list(data_obj.keys())}")
                 except Exception:
                     pass
 
@@ -202,13 +209,13 @@ class A2AClientManager:
         sanitized_stream = response_text.strip()
         sanitized_final_joined = "".join(final_artifact_texts) or "".strip()
         if sanitized_final_joined and not sanitized_stream:
-            # 스트리밍이 없었다면 최종 텍스트를 한 번만 출력
-            logger.info(sanitized_final_joined)
+            # 스트리밍이 없었다면 최종 텍스트를 한 번만 출력 (로그 레벨은 debug로 낮춤)
+            logger.debug(sanitized_final_joined)
         elif sanitized_final_joined and sanitized_final_joined != sanitized_stream:
             # 스트리밍이 있었더라도, 최종 텍스트에 추가분이 있으면 그 추가분만 1회 출력
             tail = self._compute_delta(sanitized_stream, sanitized_final_joined).strip()
             if tail:
-                logger.info(tail)
+                logger.debug(tail)
         if not collected_data_parts:
             raise ValueError("에이전트 응답에서 DataPart(JSON)를 찾지 못했습니다.")
 

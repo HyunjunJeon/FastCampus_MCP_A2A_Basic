@@ -265,8 +265,8 @@ async def _load_mcp_tools_once(config: RunnableConfig) -> list:
         name: {"transport": "streamable_http", "url": _ensure_trailing_slash(url)}
         for name, url in configurable.mcp_servers.items()
     }
-    client = MultiServerMCPClient(connections)
-    logger.info(f"MCP Client: {client}")
+    # NOTE: MultiServerMCPClient는 도구 로딩 시 꼭 필요하지 않으므로 생성 생략
+    # 필요 시점에 세션이 열리도록 load_mcp_tools(connection=...)만 사용한다
 
     async def _health_check(url: str, max_wait_s: float = 8.0, interval_s: float = 0.25) -> bool:
         """Wait until the MCP server responds 200 on /health or timeout.
@@ -365,9 +365,9 @@ async def get_all_tools(config: RunnableConfig):
     if isinstance(_MCP_TOOLS_CACHE, list) and _MCP_TOOLS_CACHE:
         return list(_MCP_TOOLS_CACHE)
 
-    # 첫 시도 이후에는 (성공/실패 무관) 재시도하지 않음 → 불필요한 서버 호출 방지
-    if _MCP_TOOLS_INIT_DONE:
-        return list(_MCP_TOOLS_CACHE or [])
+    # 첫 시도 이후에도 완전 실패(None/빈 리스트)라면 제한적 재시도를 허용한다
+    if _MCP_TOOLS_INIT_DONE and (_MCP_TOOLS_CACHE is not None) and len(_MCP_TOOLS_CACHE) > 0:
+        return list(_MCP_TOOLS_CACHE)
 
     async with _MCP_TOOLS_ASYNC_LOCK:
         # 더블 체크

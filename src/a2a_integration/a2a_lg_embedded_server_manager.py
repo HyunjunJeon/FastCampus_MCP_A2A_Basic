@@ -46,6 +46,24 @@ class EmbeddedA2AServerManager:
         server_key = f"graph:{agent_card.name}:{agent_card.url}"
         started_successfully = False
         try:
+            # url 정합성 보정: AgentCard.url 이 None/빈값이면 host/port 기반으로 보완
+            try:
+                card_url = getattr(agent_card, "url", None)
+                if not isinstance(card_url, str) or not card_url.strip():
+                    agent_card = AgentCard(
+                        name=getattr(agent_card, "name", "A2A Agent"),
+                        description=getattr(agent_card, "description", ""),
+                        url=f"http://{host}:{port}",
+                        version=getattr(agent_card, "version", "1.0.0"),
+                        default_input_modes=getattr(agent_card, "default_input_modes", ["text"]),
+                        default_output_modes=getattr(agent_card, "default_output_modes", ["text/plain"]),
+                        capabilities=getattr(agent_card, "capabilities", None),
+                        skills=getattr(agent_card, "skills", []),
+                    )
+            except Exception:
+                pass
+
+            logger.info(f"Starting A2A server for agent '{getattr(agent_card, 'name', '')}' at url='{getattr(agent_card, 'url', None)}' host={host} port={port}")
             server_app = to_a2a_starlette_server(
                 graph=graph,
                 agent_card=agent_card,
@@ -84,25 +102,29 @@ class EmbeddedA2AServerManager:
             yield {"host": host, "port": port, "base_url": f"http://{host}:{port}", "agent_type": None}
 
         except Exception as e:
+            import traceback
+            detail = f"url={getattr(agent_card, 'url', None)} host={host} port={port}"
             if not started_successfully:
-                logger.error(f"❌ Graph A2A Agent 서버 시작 실패: {e}")
+                logger.error(f"❌ Graph A2A Agent 서버 시작 실패: {e}\n{detail}\n{traceback.format_exc()}")
             else:
-                logger.error(f"❌ Graph A2A Agent 서버 실행 중 예외 발생: {e}")
+                logger.error(f"❌ Graph A2A Agent 서버 실행 중 예외 발생: {e}\n{detail}\n{traceback.format_exc()}")
             raise
         finally:
             await self._stop_server(server_key)
 
     async def _wait_for_server_ready(self, host: str, port: int, timeout: int = 10):
-        import httpx
+        from src.utils.http_client import http_client
         start_time = time.time()
         while time.time() - start_time < timeout:
             try:
                 # 0.0.0.0 바인드 시 로컬 헬스체크는 127.0.0.1로 접근
                 probe_host = "127.0.0.1" if host in ("0.0.0.0", "::") else host
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(f"http://{probe_host}:{port}/health", timeout=1.0)
-                    if response.status_code == 200:
-                        return
+                response = await http_client.get(f"http://{probe_host}:{port}/health", timeout=1.0)
+                if response.status_code == 200:
+                    return
+            except asyncio.CancelledError:
+                # 취소 시 조용히 종료
+                raise
             except Exception:
                 await asyncio.sleep(0.5)
         raise TimeoutError("서버가 제한 시간 내에 시작되지 않았습니다")
@@ -121,6 +143,7 @@ class EmbeddedA2AServerManager:
                     try:
                         await task
                     except asyncio.CancelledError:
+                        # 취소는 정상 흐름으로 간주
                         pass
                 del self.running_tasks[server_key]
             del self.servers[server_key]

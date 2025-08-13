@@ -63,12 +63,24 @@ class HITLManager:
     
     def _start_background_tasks(self):
         """백그라운드 태스크 시작"""
+        def _attach_done(task: asyncio.Task):
+            try:
+                task.result()
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                logger.error(f"백그라운드 태스크 예외: {e}")
+            finally:
+                self._background_tasks.discard(task)
+
         # 만료 확인 태스크
         task = asyncio.create_task(self._check_expired_approvals())
+        task.add_done_callback(_attach_done)
         self._background_tasks.add(task)
         
         # 이벤트 리스너
         task = asyncio.create_task(self._listen_for_events())
+        task.add_done_callback(_attach_done)
         self._background_tasks.add(task)
 
     async def execute_deep_research_handler(self, request: ApprovalRequest):
@@ -108,6 +120,9 @@ class HITLManager:
                 connection_manager=connection_manager
             )
             
+        except asyncio.CancelledError:
+            logger.info("Deep Research 실행이 취소되었습니다.")
+            return
         except Exception as e:
             logger.error(f"Deep Research 실행 중 오류: {e}")
             
@@ -193,7 +208,11 @@ class HITLManager:
                 await asyncio.sleep(2)
             
             # Deep Research 완료 대기
-            research_result = await research_task
+            try:
+                research_result = await research_task
+            except asyncio.CancelledError:
+                logger.info("Deep Research 태스크가 취소되었습니다.")
+                return
 
             # 결과 파일 저장 (reports/)
             saved_path = None
@@ -236,6 +255,9 @@ class HITLManager:
             
             logger.info(f"Deep Research 완료: {request.title}")
             
+        except asyncio.CancelledError:
+            logger.info("Deep Research 진행이 취소되었습니다.")
+            return
         except Exception as e:
             logger.error(f"Deep Research 진행 중 오류: {e}")
             raise
@@ -354,6 +376,8 @@ class HITLManager:
                     await self._handle_timeout(request_id)
                     
             except asyncio.CancelledError:
+                # 정상 취소: 로그만 남기고 종료
+                logger.info("만료 확인 태스크 취소")
                 break
             except Exception as e:
                 logger.error(f"만료 확인 오류: {e}")
@@ -376,6 +400,7 @@ class HITLManager:
                 await asyncio.sleep(0.1)
                 
             except asyncio.CancelledError:
+                logger.info("이벤트 리스너 태스크 취소")
                 break
             except Exception as e:
                 logger.error(f"이벤트 처리 오류: {e}")
@@ -471,6 +496,13 @@ class HITLManager:
         )
         
         if success:
+            # 스냅샷 저장 (컨텍스트의 최종 보고서가 있으면 파일로 보관)
+            try:
+                request = await approval_storage.get_approval_request(request_id)
+                if request:
+                    await self._save_report_snapshot(request, status_label="approved")
+            except Exception as e:
+                logger.error(f"승인 스냅샷 저장 실패: {e}")
             await self._trigger_handlers(request_id, ApprovalStatus.APPROVED)
             
         return success
@@ -495,6 +527,13 @@ class HITLManager:
         )
         
         if success:
+            # 거부 시에도 당시 보고서 스냅샷을 파일로 보관
+            try:
+                request = await approval_storage.get_approval_request(request_id)
+                if request:
+                    await self._save_report_snapshot(request, status_label="rejected")
+            except Exception as e:
+                logger.error(f"거부 스냅샷 저장 실패: {e}")
             await self._trigger_handlers(request_id, ApprovalStatus.REJECTED)
             
         return success
@@ -532,10 +571,30 @@ class HITLManager:
         
         # 이벤트별 처리 로직
         if channel == "approval:created":
-            # 새 승인 요청 알림
+            # 새 승인 요청 알림 및 실시간 브로드캐스트
             request = await approval_storage.get_approval_request(data['request_id'])
             if request:
+                # 알림 채널 전송
                 await self.notification_service.send_approval_notification(request)
+                # WebSocket으로 즉시 반영
+                try:
+                    connection_manager = getattr(self, "_connection_manager", None)
+                    if connection_manager is not None:
+                        req_dict = request.model_dump()
+                        # datetime 직렬화 보정
+                        for ts_field in ("created_at", "expires_at", "decided_at"):
+                            value = req_dict.get(ts_field)
+                            try:
+                                if hasattr(value, "isoformat"):
+                                    req_dict[ts_field] = value.isoformat()
+                            except Exception:
+                                pass
+                        await connection_manager.broadcast({
+                            "type": "approval_update",
+                            "data": req_dict,
+                        })
+                except Exception as e:
+                    logger.error(f"승인 생성 브로드캐스트 오류: {e}")
     
     def register_handler(self, status: ApprovalStatus, handler: Callable):
         """상태 변경 핸들러 등록"""
@@ -554,6 +613,34 @@ class HITLManager:
                 await handler(request)
             except Exception as e:
                 logger.error(f"핸들러 실행 오류: {e}")
+
+    async def _save_report_snapshot(self, request: ApprovalRequest, status_label: str) -> None:
+        """승인/거부 시점의 보고서 스냅샷을 파일로 저장한다.
+
+        - 대상: `request.context['final_report']`가 문자열인 경우만 저장
+        - 경로: reports/snapshots/{status}/{request_id}_{YYYYmmdd_HHMMSS}.md
+        """
+        try:
+            context: Dict[str, Any] = getattr(request, "context", {}) or {}
+            report_text = context.get("final_report")
+            if not isinstance(report_text, str) or not report_text.strip():
+                return
+            import os
+            from datetime import datetime as _dt
+            base_dir = os.path.join("reports", "snapshots", status_label)
+            os.makedirs(base_dir, exist_ok=True)
+            ts = _dt.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"{request.request_id}_{ts}.md"
+            header = (
+                f"# 최종 보고서 스냅샷 ({status_label})\n\n"
+                f"요청 ID: {request.request_id}\n"
+                f"제목: {request.title}\n"
+                f"상태: {status_label}\n\n---\n\n"
+            )
+            with open(os.path.join(base_dir, filename), "w", encoding="utf-8") as f:
+                f.write(header + report_text)
+        except Exception as e:
+            logger.error(f"보고서 스냅샷 저장 오류: {e}")
     
     async def get_pending_approvals(self, **kwargs) -> List[ApprovalRequest]:
         """대기 중인 승인 요청 조회"""

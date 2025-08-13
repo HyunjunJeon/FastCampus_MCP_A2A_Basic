@@ -8,6 +8,9 @@ license = { file = "LICENSE" }
 authors = [
     { name = "Hyunjun Jeon", email = "jeonhj920@gmail.com" }
 ]
+packages = [
+    { include = "src" }
+]
 dependencies = [
     "a2a-sdk>=0.3.0",
     "fastmcp>=2.11.0",

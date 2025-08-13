@@ -154,18 +154,28 @@ async def run_a2a_deep_research(
             
             logger.info(f"DeepResearchGraph 스펙에 맞는 데이터 Input 을 위해 전처리: {graph_input}")
             async with A2AClientManager(base_url=base_url) as client:
-                response_text = await client.send_data_merged(graph_input)
+                merged = await client.send_data_merged(graph_input)
 
         end_time = datetime.now()
         execution_time = (end_time - start_time).total_seconds()
 
         
-        logger.info(f"A2A 딥리서치 결과: {response_text}")
+        final_report_text = ""
+        try:
+            if isinstance(merged, dict):
+                # 구조화 결과에서 우선적으로 final_report를 찾는다
+                final_report_text = str(merged.get("final_report") or merged.get("text") or "")
+            else:
+                final_report_text = str(merged)
+        except Exception:
+            final_report_text = str(merged)
+
+        logger.info(f"A2A 딥리서치 결과 길이: {len(final_report_text)}")
         result = {
             "research_brief": "",
             "raw_notes_count": 0,
             "compressed_notes_count": 0,
-            "final_report": response_text or "",
+            "final_report": final_report_text,
             "context_complexity": "낮음 (평면적 구조)",
             "execution_mode": "분산식 (A2A로 그래프 래핑)",
         }
@@ -240,7 +250,7 @@ async def run_a2a_deep_research(
         }
 
 async def check_servers_basic():
-    """기본 서버 상태 체크"""
+    """기본 서버 상태 체크 (MCP + 기본 A2A Supervisor 포트)"""
     # MCP 서버 체크 (3000, 3001, 3002 포트)
     import socket
 
@@ -263,10 +273,21 @@ async def check_servers_basic():
             print(f"❌ MCP 서버 포트 {port}: 연결 실패")
 
 
+    # A2A Supervisor 기본 포트(8090) 헬스체크
+    a2a_healthy = False
+    try:
+        import httpx
+        async with httpx.AsyncClient() as client:
+            resp = await client.get("http://localhost:8090/health", timeout=1.5)
+            a2a_healthy = resp.status_code == 200
+    except Exception:
+        a2a_healthy = False
+
     print("\n📊 체크 결과:")
     print(f"   MCP 서버: {len(mcp_running)}/{len(mcp_ports)} 개 실행 중")
+    print(f"   A2A Supervisor(8090): {'정상' if a2a_healthy else '비정상/미실행'}")
 
-    return {"mcp_servers": mcp_running}
+    return {"mcp_servers": mcp_running, "a2a_server": a2a_healthy}
 
 
 async def run_comparison(query: str, endpoints: dict[str, str] | None = None, langgraph_run: bool = True, a2a_run: bool = True):

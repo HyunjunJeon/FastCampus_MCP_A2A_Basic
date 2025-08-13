@@ -3,12 +3,12 @@ HITL WebSocket 핸들러 - 실시간 알림
 """
 
 import json
+import asyncio
 from src.utils.logging_config import get_logger
 from typing import Set, Dict, Any
 from fastapi import WebSocket, WebSocketDisconnect
 
 from hitl.manager import hitl_manager
-from hitl.notifications import NotificationService
 
 
 logger = get_logger(__name__)
@@ -19,19 +19,11 @@ class WebSocketManager:
 
     def __init__(self):
         self.active_connections: Set[WebSocket] = set()
-        self.notification_service: NotificationService = None
 
     async def connect(self, websocket: WebSocket):
         """WebSocket 연결"""
         await websocket.accept()
         self.active_connections.add(websocket)
-
-        # 알림 서비스 구독 (처음 연결 시에만)
-        if self.notification_service is None:
-            self.notification_service = hitl_manager.notification_service
-            if self.notification_service:
-                self.notification_service.subscribe("web", self._broadcast_notification)
-
         logger.info(f"WebSocket 연결됨. 총 연결: {len(self.active_connections)}")
 
     def disconnect(self, websocket: WebSocket):
@@ -51,25 +43,58 @@ class WebSocketManager:
             self.disconnect(websocket)
 
     async def broadcast(self, message: Dict[str, Any]):
-        """전체 브로드캐스트"""
+        """전체 브로드캐스트 (동시 전송, 느린 클라이언트 격리)"""
         if not self.active_connections:
             return
 
-        disconnected = set()
-        for connection in self.active_connections:
-            try:
-                await connection.send_text(json.dumps(message))
-            except Exception as e:
-                logger.error(f"브로드캐스트 실패: {e}")
-                disconnected.add(connection)
+        connections = list(self.active_connections)
 
-        # 실패한 연결 제거
-        for conn in disconnected:
-            self.disconnect(conn)
+        async def _send(conn: WebSocket):
+            try:
+                async def _send_once():
+                    try:
+                        await conn.send_json(message)
+                    except Exception:
+                        await conn.send_text(json.dumps(message))
+
+                await asyncio.wait_for(_send_once(), timeout=2.0)
+                return None
+            except Exception as e:
+                return e
+
+        tasks = [asyncio.create_task(_send(conn)) for conn in connections]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for conn, result in zip(connections, results):
+            if isinstance(result, Exception):
+                logger.error(f"브로드캐스트 실패: {type(result).__name__}: {result}")
+                self.disconnect(conn)
 
     async def _broadcast_notification(self, notification_data: Dict[str, Any]):
         """알림 브로드캐스트"""
         await self.broadcast({"type": "notification", "data": notification_data})
+
+    async def broadcast_research_progress(self, progress_data: Dict[str, Any]):
+        """Deep Research 진행 상황 브로드캐스트 (API에서 사용)"""
+        # datetime 직렬화는 호출 측에서 처리됨
+        await self.broadcast({
+            "type": "research_progress",
+            "data": progress_data,
+        })
+
+    async def broadcast_research_completed(self, completion_data: Dict[str, Any]):
+        """Deep Research 완료 브로드캐스트 (API에서 사용)"""
+        await self.broadcast({
+            "type": "research_completed",
+            "data": completion_data,
+        })
+
+    async def broadcast_research_started(self, start_data: Dict[str, Any]):
+        """Deep Research 시작 브로드캐스트 (API에서 사용)"""
+        await self.broadcast({
+            "type": "research_started",
+            "data": start_data,
+        })
 
 
 # 전역 WebSocket 매니저

@@ -16,6 +16,8 @@ from a2a.types import InternalError, Part, TaskState, TextPart, DataPart
 from a2a.utils import new_agent_text_message, new_task, get_data_parts
 from a2a.utils.errors import ServerError, TaskNotFoundError
 from langgraph.types import Command
+from uuid import uuid4
+import os
 
 logger = get_logger(__name__)
 
@@ -32,6 +34,8 @@ class LangGraphWrappedA2AExecutor(AgentExecutor):
     ):
         self.graph = graph
         self._extract_result_text = result_extractor or self._default_extract_text
+        # 취소 전파를 위한 태스크 ID 집합 (A2A task.id 기준)
+        self._cancelled_task_ids: set[str] = set()
 
     def _get_graph_input_field_names(self) -> set[str]:
         """그래프의 입력 스키마에서 기대하는 필드 이름 집합을 추출한다.
@@ -520,8 +524,69 @@ class LangGraphWrappedA2AExecutor(AgentExecutor):
 
             invoke_input: Any = Command(resume=resume_value) if is_resume else graph_input
 
-            async for chunk in self.graph.astream(invoke_input, config=config):
-                logger.info(f"A2A Agent 요청 처리 시작 - LangGraph Output: {chunk}")
+            import asyncio
+            # 스트리밍 코얼레싱: 시간/문자 기준 + 최대 지연 캡 적용
+            emit_interval = float(os.getenv("A2A_STREAM_EMIT_INTERVAL_MS", "100")) / 1000.0
+            min_chars = int(os.getenv("A2A_STREAM_MIN_CHARS", "24"))
+            max_latency = float(os.getenv("A2A_STREAM_MAX_LATENCY_MS", "300")) / 1000.0
+            last_emit_ts = 0.0
+            last_any_emit_ts = 0.0
+            accum_buffer: list[str] = []
+            current_task_id = str(thread_id)
+
+            gen = self.graph.astream(invoke_input, config=config)
+
+            # 하트비트 주기 (초). 0 또는 음수면 비활성화
+            try:
+                heartbeat_interval = float(os.getenv("A2A_HEARTBEAT_INTERVAL_S", "5"))
+            except Exception:
+                heartbeat_interval = 5.0
+
+            hb_task = None
+            start_monotonic = asyncio.get_event_loop().time()
+            flush_count = 0
+            async def _heartbeat_loop():
+                import asyncio as _aio
+                from datetime import datetime as _dt
+                while True:
+                    await _aio.sleep(max(0.1, heartbeat_interval))
+                    if heartbeat_interval <= 0:
+                        break
+                    try:
+                        now = _dt.utcnow().isoformat() + "Z"
+                        elapsed = asyncio.get_event_loop().time() - start_monotonic
+                        payload = {
+                            "heartbeat": True,
+                            "ts": now,
+                            "elapsed_s": round(elapsed, 2),
+                            "emitted_chars": len(accumulated_text),
+                            "flush_count": flush_count,
+                        }
+                        await updater.add_artifact([Part(root=DataPart(data=payload))])
+                    except Exception:
+                        # 하트비트 실패는 무시
+                        pass
+
+            # 하트비트 태스크 시작
+            if heartbeat_interval and heartbeat_interval > 0:
+                import asyncio as _aio
+                hb_task = _aio.create_task(_heartbeat_loop())
+            async for chunk in gen:
+                # 외부에서 취소 요청이 온 경우 조기 종료
+                if current_task_id in self._cancelled_task_ids:
+                    try:
+                        await gen.aclose()
+                    except Exception:
+                        pass
+                    return
+                # 스트리밍 로그는 요약만 남겨 I/O 병목 방지
+                try:
+                    preview = str(chunk)
+                    if len(preview) > 300:
+                        preview = preview[:300] + "..."
+                    logger.debug(f"LangGraph stream chunk: {preview}")
+                except Exception:
+                    logger.debug("LangGraph stream chunk: <unprintable>")
                 last_result = chunk
 
                 # 0) 인터럽트 발생 감지 → input-required 로 전환하고 종료
@@ -540,22 +605,37 @@ class LangGraphWrappedA2AExecutor(AgentExecutor):
                     except Exception:
                         prompt_str = "추가 입력이 필요합니다. 내용을 입력해 주세요."
 
+                    # 스트림 제너레이터를 안전하게 종료
+                    try:
+                        await gen.aclose()
+                    except Exception:
+                        pass
+
                     await updater.update_status(
                         TaskState.input_required,
                         new_agent_text_message(prompt_str, task.context_id, task.id),
                         final=True,
                     )
+                    # 취소 플래그 정리 (동일 task_id 재사용 대비)
+                    try:
+                        self._cancelled_task_ids.discard(str(thread_id))
+                    except Exception:
+                        pass
+                    # 하트비트 태스크 종료
+                    try:
+                        if hb_task:
+                            hb_task.cancel()
+                    except Exception:
+                        pass
                     return
 
                 try:
                     partial_text = self._extract_ai_text_for_stream(chunk) or ""
                     if partial_text:
-                        # 증가분 계산: 누적 텍스트의 접미사와 부분 텍스트의 중복을 제거하여 전송량 최소화
+                        # 증가분 계산
                         if accumulated_text and partial_text.startswith(accumulated_text):
                             delta = partial_text[len(accumulated_text):]
                         else:
-                            # 일반적인 모델은 전체 누적 문자열을 내보내므로 위 분기에서 대부분 처리됨
-                            # 그렇지 않은 경우 중복을 간단히 제거
                             common_prefix_len = 0
                             max_len = min(len(accumulated_text), len(partial_text))
                             while common_prefix_len < max_len and accumulated_text[common_prefix_len] == partial_text[common_prefix_len]:
@@ -564,29 +644,93 @@ class LangGraphWrappedA2AExecutor(AgentExecutor):
 
                         accumulated_text = partial_text
                         if delta:
-                            await updater.update_status(
-                                TaskState.working,
-                                new_agent_text_message(delta, task.context_id, task.id),
-                            )
+                            accum_buffer.append(delta)
+                            now = asyncio.get_event_loop().time()
+                            should_flush = False
+                            # 조건 1: 최소 간격 초과
+                            if (now - last_emit_ts) >= emit_interval:
+                                should_flush = True
+                            # 조건 2: 버퍼가 일정 길이 초과
+                            if sum(len(x) for x in accum_buffer) >= min_chars:
+                                should_flush = True
+                            # 조건 3: 최대 지연 제한
+                            if (now - last_any_emit_ts) >= max_latency:
+                                should_flush = True
+
+                            if should_flush:
+                                text_to_send = "".join(accum_buffer)
+                                accum_buffer.clear()
+                                last_emit_ts = now
+                                last_any_emit_ts = now
+                                if text_to_send:
+                                    flush_count += 1
+                                    await updater.update_status(
+                                        TaskState.working,
+                                        new_agent_text_message(text_to_send, task.context_id, task.id),
+                                    )
                 except Exception:
                     pass
+
+            # 플러시되지 않은 버퍼가 있으면 전송
+            try:
+                if accum_buffer:
+                    text_to_send = "".join(accum_buffer)
+                    accum_buffer.clear()
+                    flush_count += 1
+                    await updater.update_status(
+                        TaskState.working,
+                        new_agent_text_message(text_to_send, task.context_id, task.id),
+                    )
+            except Exception:
+                pass
 
             # 최종 결과는 마지막 스트림 청크에서만 추출 (중복 실행 방지)
             final_text = self._extract_result_text(last_result or {})
             if not final_text:
                 final_text = accumulated_text or "결과 텍스트를 생성하지 못했습니다."
 
-            # 최종 텍스트 아티팩트
-            await updater.add_artifact(
-                [Part(root=TextPart(text=final_text))]
-            )
-
-            # JSON(DataPart) 아티팩트도 함께 제공하여 DataPart 기반 클라이언트가 안전하게 파싱 가능하도록 한다
+            # 최종 텍스트 아티팩트 (대용량은 청크 스트리밍으로 전송)
             try:
-                response_payload: dict[str, Any] = {"text": final_text}
-                await updater.add_artifact(
-                    [Part(root=DataPart(data=response_payload))]
-                )
+                CHUNK_SIZE = 8192
+                if isinstance(final_text, str) and len(final_text) > CHUNK_SIZE:
+                    artifact_id = str(uuid4())
+                    start = 0
+                    first = True
+                    text_len = len(final_text)
+                    while start < text_len:
+                        end = min(start + CHUNK_SIZE, text_len)
+                        chunk = final_text[start:end]
+                        append = not first
+                        last_chunk = end >= text_len
+                        await updater.add_artifact(
+                            [Part(root=TextPart(text=chunk))],
+                            artifact_id=artifact_id,
+                            append=append,
+                            last_chunk=last_chunk,
+                        )
+                        first = False
+                        start = end
+                else:
+                    await updater.add_artifact(
+                        [Part(root=TextPart(text=final_text))]
+                    )
+            except Exception:
+                # 청크 전송 실패 시 단일 아티팩트로 폴백
+                try:
+                    await updater.add_artifact(
+                        [Part(root=TextPart(text=final_text))]
+                    )
+                except Exception:
+                    pass
+
+            # Markdown 파트로 최종 보고서를 함께 제공 (text/markdown 힌트 포함)
+            try:
+                await updater.add_artifact([
+                    Part(root=DataPart(data={
+                        "content_type": "text/markdown",
+                        "text": final_text
+                    }))
+                ])
             except Exception:
                 pass
 
@@ -594,13 +738,28 @@ class LangGraphWrappedA2AExecutor(AgentExecutor):
             try:
                 structured_payload = self._extract_structured_output(last_result or {})
                 if structured_payload:
-                    await updater.add_artifact(
-                        [Part(root=DataPart(data=structured_payload))]
-                    )
+                    await updater.add_artifact([
+                        Part(root=DataPart(data={
+                            "content_type": "application/json",
+                            "structured": structured_payload
+                        }))
+                    ])
             except Exception:
                 # 구조 데이터가 직렬화 불가한 경우 무시하고 텍스트만 제공
                 pass
             await updater.complete()
+
+            # 취소 플래그 정리 (정상 완료 시)
+            try:
+                self._cancelled_task_ids.discard(str(thread_id))
+            except Exception:
+                pass
+            # 하트비트 태스크 종료
+            try:
+                if hb_task:
+                    hb_task.cancel()
+            except Exception:
+                pass
 
         except Exception as e:
             logger.error(f'A2A 실행 중 오류: {e}')
@@ -609,6 +768,20 @@ class LangGraphWrappedA2AExecutor(AgentExecutor):
                 f"A2A 실행 중 오류: {e}", task.context_id, task.id
             )
             await updater.failed(message=error_message)
+            # 구조화 에러 아티팩트 동봉
+            try:
+                await updater.add_artifact([
+                    Part(root=DataPart(data={
+                        "error": {"type": type(e).__name__, "message": str(e)}
+                    }))
+                ])
+            except Exception:
+                pass
+            # 취소 플래그 정리 (오류 시)
+            try:
+                self._cancelled_task_ids.discard(str(thread_id))
+            except Exception:
+                pass
             raise ServerError(error=InternalError()) from e
 
     async def cancel(
@@ -624,3 +797,9 @@ class LangGraphWrappedA2AExecutor(AgentExecutor):
         message = new_agent_text_message("사용자의 요청으로 작업이 취소되었습니다.", task.context_id, task.id)
         await event_queue.enqueue_event(message)
         await updater.cancel(message)
+
+        # 향후 execute 루프에서 조기 종료되도록 태스크 ID를 표시
+        try:
+            self._cancelled_task_ids.add(str(task.id))
+        except Exception:
+            pass

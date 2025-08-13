@@ -94,7 +94,7 @@ async def test_a2a_agent_client():
         host=host,
         port=port,
     ) as server_info:
-        print(server_info)
+        print({k: server_info[k] for k in ('base_url','host','port') if k in server_info})
         print(f"✅ 그래프 기반 A2A 서버 시작: {server_info['base_url']}")
 
         # A2A 클라이언트 생성 및 테스트
@@ -119,7 +119,10 @@ async def test_a2a_agent_client():
             print("\n  🔍 JSON 페이로드(DataPart) 전송")
             print("  🕒 A2A 프로토콜(JSON) 전송 중...")
             print("===" * 30)
-            await client.send_data(payload)
+            try:
+                await client.send_data(payload)
+            except Exception as e:
+                print(f"⚠️ JSON 전송 실패: {e}")
             print("===" * 30)
 
             print("\n🎉 모든 A2A 에이전트 통신 테스트 완료!")
