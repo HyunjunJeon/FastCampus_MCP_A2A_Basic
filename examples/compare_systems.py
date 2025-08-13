@@ -38,8 +38,8 @@ from datetime import datetime
 from pathlib import Path
 from dotenv import load_dotenv
 
-# 프로젝트 루트 설정
-PROJECT_ROOT = Path(__file__).parent.parent
+# 프로젝트 루트 설정 (절대경로로 고정하여 실행 CWD와 무관하게 저장되도록 함)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 # .env 파일 로드
@@ -65,17 +65,11 @@ async def run_langgraph_deep_research(query: str):
         from src.lg_agents.deep_research.deep_research_agent import deep_research_graph
         from langchain_core.messages import HumanMessage
 
-        print("✅ deep_research_graph 임포트 성공")
-
-        print("🔧 LangGraph 딥리서치 그래프 가져오기...")
-        app = deep_research_graph
-        print("✅ LangGraph 딥리서치 그래프 준비 완료")
-
         print(f"📝 딥리서치 쿼리 실행: {query}")
         print("🔄 LangGraph 복잡한 State 관리로 실행 중...")
 
         # 실제 LangGraph 딥리서치 실행
-        result = await app.ainvoke({"messages": [HumanMessage(content=query)]})
+        result = await deep_research_graph.ainvoke({"messages": [HumanMessage(content=query)]})
 
         end_time = datetime.now()
         execution_time = (end_time - start_time).total_seconds()
@@ -95,7 +89,7 @@ async def run_langgraph_deep_research(query: str):
                 "messages_count": len(result.get("messages", [])),
                 "state_keys": list(result.keys()) if result else [],
             },
-            "system_type": "LangGraph 딥리서치",
+            "system_type": "LangGraph",
             "architecture": "복잡한 State 관리, 중앙 집중식, 순차 실행",
         }
 
@@ -368,20 +362,20 @@ async def run_comparison(query: str, endpoints: dict[str, str] | None = None, la
             print(f"   ❌ 실패: {a2a_result['error']}")
             print(f"   ⏱️  실패까지 시간: {a2a_result.get('execution_time', 0):.2f}초")
 
-    # 실패 원인 분석
-    if langgraph_run or a2a_run:
-        if not langgraph_result.get("success", False) and not a2a_result.get("success", False):
-            print("\n🔍 실패 원인 분석:")
+    # # 실패 원인 분석
+    # if langgraph_run or a2a_run:
+    #     if not langgraph_result.get("success", False) and not a2a_result.get("success", False):
+    #         print("\n🔍 실패 원인 분석:")
 
-        if not server_status["mcp_servers"]:
-            print("   📡 MCP 서버가 실행되지 않음")
-            print("      → Docker로 MCP 서버를 먼저 시작하세요")
+    #     if not server_status["mcp_servers"]:
+    #         print("   📡 MCP 서버가 실행되지 않음")
+    #         print("      → Docker로 MCP 서버를 먼저 시작하세요")
 
-        if not server_status["a2a_server"]:
-            print("   🌐 A2A 서버가 실행되지 않음")
-            print(
-                "      → 테스트 용도로는 임베디드 서버 사용 권장: start_embedded_graph_server(...)"
-            )
+    #     if not server_status["a2a_server"]:
+    #         print("   🌐 A2A 서버가 실행되지 않음")
+    #         print(
+    #             "      → 테스트 용도로는 임베디드 서버 사용 권장: start_embedded_graph_server(...)"
+    #         )
 
     # 결과를 JSON으로 저장
     comparison_result = {
@@ -389,13 +383,13 @@ async def run_comparison(query: str, endpoints: dict[str, str] | None = None, la
         "query": query,
         "total_experiment_time": total_time,
         "server_status": server_status,
-        "langgraph_deep_research": langgraph_result,
-        "a2a_deep_research": a2a_result,
+        "langgraph_deep_research": langgraph_result or None,
+        "a2a_deep_research": a2a_result or None,
         "comparison_type": "LangGraph 딥리서치 vs A2A 딥리서치 구현체 비교",
     }
 
     # 결과를 reports/ 폴더에 날짜 포함 파일명으로 저장
-    reports_dir = PROJECT_ROOT / "reports"
+    reports_dir = PROJECT_ROOT / "reports" / "step3"
     reports_dir.mkdir(parents=True, exist_ok=True)
     filename = f"comparison_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     output_path = reports_dir / filename

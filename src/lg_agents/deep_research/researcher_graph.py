@@ -33,30 +33,28 @@ from .prompts import (
     compress_research_simple_human_message,
     get_today_str,
 )
-from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.tools import load_mcp_tools
 from urllib.parse import urlparse
 from src.utils.http_client import http_client
+from src.lg_agents.deep_research.shared import ResearchComplete
 
 
 logger = get_logger(__name__)
 
-
-class ResearcherState(TypedDict):
-    """Researcher 서브그래프 내부 상태"""
-
+class ResearcherInputState(TypedDict):
+    """Researcher 서브그래프 입력 상태"""
     researcher_messages: Annotated[list, operator.add]
-    tool_call_iterations: int
     research_topic: str
-    compressed_research: str
-    raw_notes: Annotated[list[str], override_reducer]
 
-
-class ResearcherOutputState(BaseModel):
+class ResearcherOutputState(TypedDict):
     """Researcher 서브그래프 출력 상태"""
 
     compressed_research: str
     raw_notes: Annotated[list[str], override_reducer] = []
+
+class ResearcherState(ResearcherInputState, ResearcherOutputState):
+    """Researcher 서브그래프 내부 상태"""
+    tool_call_iterations: int
 
 
 def _get_mcp_prompt_description(tools: list) -> str:
@@ -393,7 +391,7 @@ async def researcher(state: ResearcherState, config: RunnableConfig):
     configurable = ResearchConfig.from_runnable_config(config)
     researcher_messages = state.get("researcher_messages", [])
 
-    # 주의: Researcher에서는 MCP 도구만 바인딩한다 (Supervisor의 ConductResearch/ResearchComplete와 분리)
+    # NOTE: 주의! Researcher에서는 MCP 도구만 바인딩한다 (Supervisor의 ConductResearch/ResearchComplete와 분리)
     tools = await get_all_tools(config)
     if len(tools) == 0:
         raise ValueError("연구를 수행할 도구가 없습니다. MCP 서버를 확인하세요.")
@@ -408,11 +406,15 @@ async def researcher(state: ResearcherState, config: RunnableConfig):
         model="gpt-4.1-mini", # Rate Limit 때문에 임시로 제한이 더 넉넉한 모델로 변경
         temperature=0,
     )
+    
+    # NOTE: 연구 완료 신호 도구 추가
+    tools = tools + [ResearchComplete]
+    
     try:
         model = (
             base_model
-            .bind_tools(tools, parallel_tool_calls=False)
-            # .bind_tools(tools)
+            .bind_tools(tools, parallel_tool_calls=False, tool_choice=True)
+            # .bind_tools(tools) # 동시에 호출하게 되면 에러 발생 가능성 높음
             .with_retry(stop_after_attempt=configurable.max_structured_output_retries)
         )
     except Exception as e:
@@ -560,7 +562,8 @@ async def compress_research(state: ResearcherState, config: RunnableConfig):
 
 
 researcher_builder = StateGraph(
-    state_schema=ResearcherState, 
+    state_schema=ResearcherState,
+    input_schema=ResearcherInputState,
     output_schema=ResearcherOutputState, 
     config_schema=ResearchConfig,
 )

@@ -7,7 +7,7 @@ Supervisor 서브그래프 모듈
 from __future__ import annotations
 
 import asyncio
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal  
 import json
 
 from langchain.chat_models import init_chat_model
@@ -26,15 +26,17 @@ from .researcher_graph import researcher_graph
 
 logger = get_logger(__name__)
 
-
-class DeepResearchSupervisorState(TypedDict):
-    """Supervisor 서브그래프 내부 상태"""
-
+class SupervisorInputState(TypedDict):
     supervisor_messages: Annotated[list, override_reducer]
     research_brief: str
-    notes: Annotated[list[str], override_reducer]
+    
+class SupervisorOutputState(TypedDict):
+    supervisor_messages: Annotated[list, override_reducer]
     research_iterations: int
     raw_notes: Annotated[list[str], override_reducer]
+
+class SupervisorOverallState(SupervisorInputState, SupervisorOutputState):
+    """Supervisor 서브그래프 내부 상태"""
 
 
 def _tc_name(tool_call: Any) -> str | None:
@@ -132,9 +134,10 @@ def _tc_args(tool_call: Any) -> dict:
     return {}
 
 
-def _check_termination_conditions(supervisor_messages: list, research_iterations: int, configurable: ResearchConfig):
+def _check_terminate_conditions(supervisor_messages: list, research_iterations: int, configurable: ResearchConfig):
     if not supervisor_messages:
         return True, None
+
     most_recent_message = supervisor_messages[-1]
     exceeded_allowed_iterations = research_iterations >= configurable.max_researcher_iterations
     no_tool_calls = not most_recent_message.tool_calls
@@ -255,41 +258,43 @@ def _process_research_results(tool_results: list, conduct_research_calls: list):
         raw_notes_concat = ""
     return tool_messages, raw_notes_concat
 
+async def supervisor(state: SupervisorOverallState, config: RunnableConfig) -> dict:
+    configurable = ResearchConfig.from_runnable_config(config)
+    # Superviser 모델에는 ConductResearch/ResearchComplete만 바인딩
+    # (Researcher 단계에서 MCP 도구를 바인딩하므로 혼합 바인딩을 피함)
+    model = (
+        init_chat_model(model_provider="openai", model="gpt-4o-2024-11-20", temperature=0)
+        .bind_tools([ConductResearch, ResearchComplete])
+        .with_retry(stop_after_attempt=configurable.max_structured_output_retries)
+    )
 
-def build_supervisor_subgraph():
-    """Supervisor 서브그래프"""
+    # NOTE: Input State 에 넣어주었던 메시지
+    supervisor_messages = state.get("supervisor_messages", [])
+    response = await model.ainvoke(supervisor_messages)
+    # return Command(
+    #     goto="supervisor_tools",
+    #     update={
+    #         "supervisor_messages": [response],
+    #         "research_iterations": state.get("research_iterations", 0) + 1,
+    #     },
+    # )
+    return {
+        "supervisor_messages": [response],
+        "research_iterations": state.get("research_iterations", 0) + 1,
+    }
 
-    async def supervisor(state: DeepResearchSupervisorState, config: RunnableConfig):
+async def supervisor_tools(state: SupervisorOverallState, config: RunnableConfig) -> Command[Literal["supervisor", "__end__"]]:
         configurable = ResearchConfig.from_runnable_config(config)
-        # Superviser 모델에는 ConductResearch/ResearchComplete만 바인딩
-        # (Researcher 단계에서 MCP 도구를 바인딩하므로 혼합 바인딩을 피함)
-        lead_researcher_tools = [ConductResearch, ResearchComplete]
-        model = (
-            init_chat_model(model_provider="openai", model="gpt-4o-2024-11-20", temperature=0)
-            .bind_tools(lead_researcher_tools)
-            .with_retry(stop_after_attempt=configurable.max_structured_output_retries)
-        )
-
         supervisor_messages = state.get("supervisor_messages", [])
-        response = await model.ainvoke(supervisor_messages)
-        return Command(
-            goto="supervisor_tools",
-            update={
-                "supervisor_messages": [response],
-                "research_iterations": state.get("research_iterations", 0) + 1,
-            },
-        )
+        research_iterations = state.get("research_iterations", 0) + 1
 
-    async def supervisor_tools(state: DeepResearchSupervisorState, config: RunnableConfig):
-        configurable = ResearchConfig.from_runnable_config(config)
-        supervisor_messages = state.get("supervisor_messages", [])
-        research_iterations = state.get("research_iterations", 0)
-
-        should_terminate, most_recent_message = _check_termination_conditions(
+        # NOTE: 종료 조건 확인
+        should_terminate, most_recent_message = _check_terminate_conditions(
             supervisor_messages, 
             research_iterations, 
             configurable,
         )
+        
         if should_terminate:
             return Command(
                 goto=END,
@@ -301,7 +306,8 @@ def build_supervisor_subgraph():
 
         try:
             all_conduct_research_calls = [
-                tool_call for tool_call in (most_recent_message.tool_calls or []) if _tc_name(tool_call) == "ConductResearch"
+                tool_call for tool_call in (most_recent_message.tool_calls or []) 
+                if _tc_name(tool_call) == "ConductResearch" # NOTE: 연구 계획 작성 후 연구 감독자 그래프로 이동
             ]
             logger.info(f"ConductResearch calls detected: {len(all_conduct_research_calls)}")
 
@@ -337,7 +343,7 @@ def build_supervisor_subgraph():
             except Exception:
                 pass
 
-            # 1) 안전한 노트 추출 (ToolMessage 의존 최소화)
+            # 1) 안전하게 notes 추출 (ToolMessage 의존 최소화)
             notes_list: list[str] = []
             try:
                 for obs in tool_results:
@@ -409,10 +415,21 @@ def build_supervisor_subgraph():
                 },
             )
 
-    builder = StateGraph(state_schema=DeepResearchSupervisorState, config_schema=ResearchConfig)
-    builder.add_node("supervisor", supervisor)
-    builder.add_node("supervisor_tools", supervisor_tools)
-    builder.set_entry_point("supervisor")
-    return builder.compile()
+def build_supervisor_subgraph():
+    """Supervisor 서브그래프"""
+
+    workflow = StateGraph(
+        state_schema=SupervisorOverallState, 
+        input_schema=SupervisorInputState,
+        output_schema=SupervisorOutputState,
+        config_schema=ResearchConfig,
+    )
+    # 노드
+    workflow.add_node("supervisor", supervisor)
+    workflow.add_node("supervisor_tools", supervisor_tools)
+    # 엣지
+    workflow.set_entry_point("supervisor")
+    workflow.add_edge("supervisor", "supervisor_tools")
+    return workflow.compile()
 
 

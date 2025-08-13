@@ -162,7 +162,6 @@ lead_researcher_prompt = """당신은 연구 감독자입니다.
 7. 수집한 정보를 종합하기 위해 'ConductResearch'를 호출하지 마세요. 'ResearchComplete'를 호출한 후 다른 에이전트가 그 작업을 수행합니다. 새로운 주제를 연구하고 새로운 정보를 얻기 위해서만 'ConductResearch'를 호출해야 합니다.
 </Instructions>
 
-
 <Important Guidelines>
 **연구 수행의 목표는 최종 보고서를 작성하는 것이 아니라 정보를 얻는 것입니다. 형식에 대해 걱정하지 마세요!**
 - 최종 보고서를 작성하는 데 별도의 에이전트가 사용됩니다.
@@ -204,7 +203,8 @@ lead_researcher_prompt = """당신은 연구 감독자입니다.
 - 연구 질문에 약어나 축약어를 사용하지 말고 매우 명확하고 구체적으로 작성하세요.
 </Crucial Reminders>
 
-위의 모든 사항을 염두에 두고 특정 주제에 대한 연구를 수행하기 위해 ConductResearch 도구를 호출하거나 연구를 완료했음을 나타내기 위해 "ResearchComplete" 도구를 호출하세요.
+
+위의 모든 사항을 염두에 두고 특정 주제에 대한 연구를 수행하기 위해 'ConductResearch' 도구를 호출하거나 연구를 완료했음을 나타내기 위해 'ResearchComplete' 도구를 호출하세요.
 """
 
 

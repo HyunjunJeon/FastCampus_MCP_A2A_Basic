@@ -17,7 +17,6 @@
 
 - MCP-only DeepResearch 실행 예제: `examples/step3_multiagent_systems.py`
 - 비교 결과 JSON: `reports/comparison_results_YYYYMMDD_HHMMSS.json`
-- (기 존재) 임베디드 A2A 서버 유틸을 활용한 A2A 전환 실행 경로
 
 ## 구축 순서(요약)
 

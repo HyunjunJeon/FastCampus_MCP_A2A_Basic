@@ -218,7 +218,7 @@ async def write_research_brief(
         date=get_today_str()
     )
 
-    response = await model.ainvoke([HumanMessage(content=transform_prompt)])
+    response: ResearchQuestion = await model.ainvoke([HumanMessage(content=transform_prompt)])
 
     logger.info(f"write_research_brief completed in {time.time() - start_time:.2f}s")
 
@@ -227,18 +227,16 @@ async def write_research_brief(
         max_concurrent_research_units=configurable.max_concurrent_research_units
     )
 
+    # 연구 계획 작성 완료 후 연구 감독자 그래프로 이동
     return Command(
         goto="research_supervisor",
         # 커스텀된 출력물인 이유는 Sub-Graph 의 State 구조를 만족시키기 위해서
         update={
             "research_brief": response.research_brief,
-            "supervisor_messages": {
-                "type": "override",
-                "value": [
-                    SystemMessage(content=supervisor_prompt),
-                    HumanMessage(content=response.research_brief), # 유저의 원본 질문이 아님을 주의
-                ],
-            },
+            "supervisor_messages":  [
+                SystemMessage(content=supervisor_prompt),
+                HumanMessage(content=response.research_brief), # NOTE: 유저의 원본 질문이 아님을 주의
+            ],
         },
     )
 
