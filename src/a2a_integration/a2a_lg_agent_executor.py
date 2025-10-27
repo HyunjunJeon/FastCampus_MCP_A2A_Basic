@@ -38,11 +38,12 @@ class LangGraphWrappedA2AExecutor(AgentExecutor):
         self._cancelled_task_ids: set[str] = set()
 
     def _get_graph_input_field_names(self) -> set[str]:
-        """그래프의 입력 스키마에서 기대하는 필드 이름 집합을 추출한다.
+        """그래프의 입력 스키마에서 기대하는 필드 이름 집합을 안정적으로 추출.
 
-        - get_input_schema() → Pydantic 모델/TypedDict/dict 등 지원
-        - input_schema 속성도 시도
-        - 실패 시 빈 집합 반환
+        - Annotated 래핑을 언랩하고 TypedDict/class/dataclass/dict 등을 처리
+        - pydantic v1/v2 모델도 기존 방식(model_fields / __fields__)으로 유지
+        - get_type_hints(..., include_extras=True) 우선 시도 후 __annotations__ 폴백
+        - {'root': ...} 같은 래핑 내부도 재귀적으로 탐색
         """
         schema: Any | None = None
         try:
@@ -51,37 +52,129 @@ class LangGraphWrappedA2AExecutor(AgentExecutor):
                 schema = getter()
             elif hasattr(self.graph, "input_schema"):
                 schema = getattr(self.graph, "input_schema")
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Failed to obtain input schema from graph: {e}")
             schema = None
 
-        field_names: set[str] = set()
         if schema is None:
-            return field_names
+            return set()
 
-        # Pydantic v2 모델 타입/인스턴스 처리
+        def _unwrap_annotated(obj: Any) -> Any:
+            """Annotated 타입을 언랩핑."""
+            try:
+                from typing import get_origin, get_args
+                try:
+                    from typing import Annotated as _Annotated  # Py3.9+
+                except ImportError:
+                    from typing_extensions import Annotated as _Annotated
+                if get_origin(obj) is _Annotated:
+                    args = get_args(obj)
+                    if args:
+                        return args[0]
+            except Exception:
+                pass
+            return obj
+
+        def _extract_from_obj(obj: Any, depth: int = 0) -> set[str]:
+            """객체에서 필드명을 재귀적으로 추출 (최대 깊이 제한)."""
+            if depth > 5:  # 무한 재귀 방지
+                return set()
+
+            # 먼저 Annotated 등 언랩
+            obj = _unwrap_annotated(obj)
+
+            # Pydantic 모델(v2: model_fields, v1: __fields__) 처리 우선 시도
+            try:
+                from pydantic import BaseModel as _PDBase
+                if isinstance(obj, type) and issubclass(obj, _PDBase):
+                    fields = getattr(obj, "model_fields", None) or getattr(obj, "__fields__", None)
+                    return set(fields.keys()) if isinstance(fields, dict) else set()
+                if isinstance(obj, _PDBase):
+                    fields = getattr(obj, "model_fields", None) or getattr(obj, "__fields__", None)
+                    return set(fields.keys()) if isinstance(fields, dict) else set()
+            except Exception:
+                pass
+
+            # dict 형태일 경우: {'root': ...} 라면 내부로 재귀, 아니면 dict 키 자체를 사용
+            if isinstance(obj, dict):
+                if "root" in obj:
+                    inner = obj.get("root")
+                    names = _extract_from_obj(inner, depth + 1)
+                    if names:
+                        return names
+                return set(obj.keys())
+
+            # typing generics (e.g., Dict[str, TypedDictClass] 등) 내부 타입들 검사
+            try:
+                from typing import get_origin, get_args
+                origin = get_origin(obj)
+                if origin is not None:
+                    args = get_args(obj) or ()
+                    for a in args:
+                        if a is None:
+                            continue
+                        names = _extract_from_obj(a, depth + 1)
+                        if names:
+                            return names
+            except Exception:
+                pass
+
+            # get_type_hints 시도 (include_extras=True -> Annotated 등 포함해서 해석)
+            try:
+                from typing import get_type_hints
+                try:
+                    hints = get_type_hints(obj, include_extras=True)
+                except TypeError:
+                    # 일부 파이썬 버전/환경에서는 include_extras 미지원
+                    hints = get_type_hints(obj)
+                if isinstance(hints, dict) and hints:
+                    return set(hints.keys())
+            except Exception:
+                pass
+
+            # __annotations__ 폴백 (TypedDict 클래스는 여기서 필드명을 갖고 있음)
+            try:
+                annotations = getattr(obj, "__annotations__", None)
+                if isinstance(annotations, dict) and annotations:
+                    return set(annotations.keys())
+            except Exception:
+                pass
+
+            # 인스턴스라면 타입에서 재시도
+            try:
+                t = getattr(obj, "__class__", None)
+                if t and t is not obj:
+                    names = _extract_from_obj(t, depth + 1)
+                    if names:
+                        return names
+            except Exception:
+                pass
+
+            return set()
+
         try:
-            from pydantic import BaseModel as _PDBase
+            unwrapped_schema = _unwrap_annotated(schema)
+            # 제네릭/튜플 내부의 가능한 타입들을 먼저 시도
+            try:
+                from typing import get_origin, get_args
+                origin = get_origin(unwrapped_schema)
+                if origin is not None:
+                    args = get_args(unwrapped_schema) or ()
+                    for a in args:
+                        if a is None:
+                            continue
+                        names = _extract_from_obj(a)
+                        if names:
+                            return names
+            except Exception:
+                pass
 
-            if isinstance(schema, type) and issubclass(schema, _PDBase):
-                return set(getattr(schema, "model_fields", {}).keys())
-            if isinstance(schema, _PDBase):
-                return set(getattr(schema, "model_fields", {}).keys())
-        except Exception:
-            pass
-
-        # TypedDict or dataclass-like: __annotations__ 기반
-        try:
-            annotations = getattr(schema, "__annotations__", None)
-            if isinstance(annotations, dict):
-                field_names.update(annotations.keys())
-        except Exception:
-            pass
-
-        # dict 스키마
-        if isinstance(schema, dict):
-            field_names.update(schema.keys())
-
-        return field_names
+            # 기본 경로: 객체/클래스/사전에서 추출
+            field_names = _extract_from_obj(unwrapped_schema)
+            return field_names or set()
+        except Exception as e:
+            logger.debug(f"Failed to extract graph input field names: {e}")
+            return set()
 
     def _looks_like_messages_field(self, name: str) -> bool:
         """필드명이 메시지 배열을 의미하는지 휴리스틱으로 판단."""
