@@ -9,31 +9,31 @@ authors = [
     { name = "Hyunjun Jeon", email = "jeonhj920@gmail.com" }
 ]
 dependencies = [
-    "a2a-sdk>=0.3.0",
-    "fastmcp>=2.11.0",
-    "langchain>=0.3.27",
-    "langchain-google-genai>=2.1.8",
-    "langchain-mcp-adapters>=0.1.9",
-    "langchain-openai>=0.3.28",
-    "langgraph>=0.6.2",
-    "python-dotenv>=1.1.1",
+    "a2a-sdk>=0.3.11",
+    "fastmcp>=2.13.0.2",
+    "langchain>=1.0.5",
+    "langchain-google-genai>=3.0.2",
+    "langchain-mcp-adapters>=0.1.12",
+    "langchain-openai>=1.0.2",
+    "langgraph>=1.0.3",
+    "python-dotenv>=1.2.1",
     "pytz>=2025.2",
-    "tavily-python>=0.3.8",
-    "fastapi>=0.115.0",
-    "uvicorn[standard]>=0.32.0",
-    "websockets>=14.1",
-    "redis>=5.2.0",
+    "tavily-python>=0.7.12",
+    "fastapi>=0.121.1",
+    "uvicorn[standard]>=0.38.0",
+    "websockets>=15.0.1",
+    "redis>=7.0.1",
     "httpx>=0.28.1",
-    "httpx-sse>=0.4.0",
-    "arxiv>=2.2.0",
+    "httpx-sse>=0.4.3",
+    "arxiv>=2.3.0",
 ]
 
 [dependency-groups]
 dev = [
-    "pytest>=8.4.1",
-    "pytest-asyncio>=1.1.0",
-    "ruff>=0.12.7",
-    "ty>=0.0.1a16",
+    "pytest>=9.0.0",
+    "pytest-asyncio>=1.3.0",
+    "ruff>=0.14.4",
+    "ty>=0.0.1a26",
 ]
 
 [tool.pytest.ini_options]

@@ -1,5 +1,14 @@
-"""
-A2A Client Utilities - A2A 클라이언트 0.3.0 기준
+"""A2A 클라이언트 유틸리티 모듈.
+
+A2A 프로토콜 표준 클라이언트를 생성하고 관리하는 유틸리티를 제공합니다.
+
+주요 기능:
+    - AgentCard 자동 조회 및 해석
+    - 다중 전송 프로토콜 지원 (JSON-RPC, HTTP+JSON, gRPC)
+    - 스트리밍 응답 처리 및 증분 병합
+    - DataPart(JSON) 자동 수집 및 병합
+    - 클라이언트 선호도 협상
+    - 출력 모드 제한
 """
 
 from typing import Any
@@ -14,27 +23,71 @@ logger = get_logger(__name__)
 
 
 class A2AClientManager:
-    """A2A 표준 클라이언트를 안전하게 감싸는 관리 클래스.
+    """A2A 표준 클라이언트 매니저.
 
-    - 에이전트 카드 조회 및 A2A 클라이언트 초기화/종료 수명주기 관리
-    - 텍스트 쿼리(`send_query`) 스트리밍:
-      스트리밍 이벤트의 텍스트 파트를 증분 병합해 중복 없이 출력
-    - JSON 쿼리(`send_data`) 스트리밍:
-      1) 텍스트 파트: 진행 로그/에이전트 텍스트를 증분 출력
-      2) DataPart: 응답 전체에서 발견된 모든 JSON을 수집해 리스트로 반환
-         (툴 호출 중간 결과 + 최종 구조화 결과 포함)
-    - 최종 아티팩트와 스트리밍 중복 방지 정책:
-      스트리밍이 없을 때만 최종 텍스트를 1회 출력. 스트리밍이 있었다면
-      최종 텍스트에만 존재하는 추가 tail 만 1회 출력
+    A2A 에이전트와 통신하기 위한 클라이언트를 생성하고 관리합니다.
+    컨텍스트 매니저 패턴을 지원하여 자동 초기화 및 종료가 가능합니다.
+
+    주요 기능:
+        - AgentCard 자동 조회 및 해석
+        - 다중 전송 프로토콜 협상 (JSON-RPC, HTTP+JSON, gRPC)
+        - 스트리밍 응답 처리 및 증분 병합
+        - DataPart(JSON) 자동 수집
+        - 중복 제거 및 텍스트 병합
+
+    텍스트 쿼리 (send_query):
+        스트리밍 이벤트의 텍스트 파트를 증분 병합하여 중복 없이 출력합니다.
+
+    JSON 쿼리 (send_data):
+        - 텍스트 파트: 진행 로그 및 에이전트 텍스트를 증분 출력
+        - DataPart: 응답 전체에서 발견된 모든 JSON을 수집하여 리스트로 반환
+          (툴 호출 중간 결과 및 최종 구조화 결과 포함)
+
+    중복 방지 정책:
+        스트리밍이 없을 때만 최종 텍스트를 1회 출력합니다.
+        스트리밍이 있었다면 최종 텍스트에만 존재하는 추가 부분만 출력합니다.
     """
 
     def __init__(
         self,
         base_url: str = "http://localhost:8080",
         streaming: bool = True,
+        polling: bool = False,
+        use_client_preference: bool = False,
+        accepted_output_modes: list[str] | None = None,
+        supported_transports: list[TransportProtocol] | None = None,
     ):
+        """A2A 클라이언트 매니저를 초기화합니다.
+
+        Args:
+            base_url: A2A 서버의 기본 URL.
+            streaming: 스트리밍 모드 활성화 여부 (기본: True).
+            polling: 폴링 모드 활성화 여부 (기본: False).
+            use_client_preference: 클라이언트가 선호하는 전송 프로토콜을 우선 사용할지 여부.
+                True이면 supported_transports 리스트 순서대로 시도합니다.
+            accepted_output_modes: 수락할 출력 모드 리스트.
+                None이면 모든 모드를 수락합니다.
+            supported_transports: 지원할 전송 프로토콜 리스트.
+                None이면 JSON-RPC, HTTP+JSON, gRPC 순서로 시도합니다.
+
+        Examples:
+            기본 사용:
+                >>> async with A2AClientManager("http://localhost:8080") as client:
+                ...     result = await client.send_query("안녕하세요")
+
+            gRPC 우선 사용:
+                >>> manager = A2AClientManager(
+                ...     base_url="http://localhost:8080",
+                ...     use_client_preference=True,
+                ...     supported_transports=[TransportProtocol.grpc, TransportProtocol.jsonrpc],
+                ... )
+        """
         self.base_url = base_url
         self.streaming = streaming
+        self.polling = polling
+        self.use_client_preference = use_client_preference
+        self.accepted_output_modes = accepted_output_modes or []
+        self.supported_transports = supported_transports
         self.client = None
         self.agent_card: AgentCard | None = None
         self._httpx_client = None
@@ -47,11 +100,20 @@ class A2AClientManager:
         await self.close()
 
     async def initialize(self) -> "A2AClientManager":
-        """A2A 클라이언트를 초기화한다.
+        """A2A 클라이언트를 초기화합니다.
 
-        - 원격 `/.well-known/agent-card.json`을 가져와 `AgentCard` 구성
-        - 스트리밍/전송 프로토콜 설정 후 실제 전송 클라이언트 생성
-        - 호출자는 컨텍스트 매니저(`async with`) 사용을 권장
+        원격 서버에서 AgentCard를 조회하고 적절한 전송 프로토콜을 선택하여
+        실제 통신 클라이언트를 생성합니다.
+
+        Returns:
+            초기화된 A2AClientManager 인스턴스 (self).
+
+        Raises:
+            httpx.HTTPError: AgentCard 조회 실패 시.
+            A2AClientError: 클라이언트 생성 실패 시.
+
+        Note:
+            컨텍스트 매니저 (async with)를 사용하면 자동으로 호출됩니다.
         """
         # 공통 HTTP 클라이언트 세션을 사용해 Agent Card를 1회 조회
         resolver = A2ACardResolver(
@@ -59,31 +121,65 @@ class A2AClientManager:
             base_url=self.base_url,
         )
         self.agent_card: AgentCard = await resolver.get_agent_card()
-        config = ClientConfig(
-            streaming=self.streaming,
-            supported_transports=[
-                TransportProtocol.jsonrpc,
-                TransportProtocol.http_json,
-                TransportProtocol.grpc,
-            ]
-        )
+        
+        # A2A SDK 0.3.11 ClientConfig 구성
+        config_kwargs = {
+            "streaming": self.streaming,
+            "supported_transports": self.supported_transports or [
+                TransportProtocol.jsonrpc,  # JSON-RPC 2.0 기본 프로토콜
+                TransportProtocol.http_json,  # RESTful HTTP+JSON
+                TransportProtocol.grpc,  # gRPC (A2A SDK 0.3.11+)
+            ],
+        }
+        
+        if self.polling:
+            config_kwargs["polling"] = self.polling
+        if self.use_client_preference:
+            config_kwargs["use_client_preference"] = self.use_client_preference
+        if self.accepted_output_modes:
+            config_kwargs["accepted_output_modes"] = self.accepted_output_modes
+        
+        config = ClientConfig(**config_kwargs)
         factory = ClientFactory(config=config)
         self.client = factory.create(card=self.agent_card)
         return self
 
     async def get_agent_card(self) -> AgentCard:
-        """초기화 시 획득한 `AgentCard`를 반환한다."""
+        """초기화 시 획득한 AgentCard를 반환합니다.
+
+        Returns:
+            AgentCard 인스턴스.
+
+        Raises:
+            RuntimeError: 초기화되지 않은 상태에서 호출 시.
+        """
+        if self.agent_card is None:
+            raise RuntimeError("클라이언트가 초기화되지 않았습니다. initialize()를 먼저 호출하세요.")
         return self.agent_card
 
     async def close(self):
-        """내부 HTTP 클라이언트를 정리한다."""
+        """내부 HTTP 클라이언트를 정리합니다.
+
+        Note:
+            컨텍스트 매니저 (async with)를 사용하면 자동으로 호출됩니다.
+        """
         if self._httpx_client:
             await self._httpx_client.aclose()
 
     def get_agent_info(self) -> dict[str, Any]:
-        """에이전트 카드의 요약 정보를 딕셔너리로 반환한다.
+        """에이전트 카드의 요약 정보를 딕셔너리로 반환합니다.
 
-        UI/로그 노출용으로 가벼운 메타데이터만 포함한다.
+        UI 표시나 로깅용으로 사용할 수 있는 간단한 메타데이터를 제공합니다.
+
+        Returns:
+            에이전트 정보를 담은 딕셔너리. 포함 필드:
+                - name: 에이전트 이름
+                - description: 에이전트 설명
+                - url: 서비스 URL
+                - capabilities: 지원 기능 (streaming, push_notifications 등)
+                - default_input_modes: 기본 입력 모드
+                - default_output_modes: 기본 출력 모드
+                - skills: 스킬 목록 (name, description)
         """
         return {
             "name": self.agent_card.name,
@@ -99,11 +195,19 @@ class A2AClientManager:
         }
 
     async def send_query(self, user_query: str) -> str:
-        """순수 텍스트 질의를 전송하고, 스트리밍 텍스트를 병합해 반환한다.
+        """텍스트 질의를 에이전트에게 전송하고 응답을 반환합니다.
 
-        동작 요약:
-        - 스트리밍 이벤트의 텍스트 파트를 `_iter_texts_from_event`로 순회
-        - `_merge_incremental_text`로 누적 텍스트와 신규 텍스트를 중복 없이 병합
+        스트리밍 이벤트의 텍스트 파트를 증분 병합하여 중복 없이 최종 응답을 구성합니다.
+
+        Args:
+            user_query: 에이전트에게 전송할 텍스트 질의.
+
+        Returns:
+            에이전트의 최종 응답 텍스트.
+
+        Raises:
+            RuntimeError: 클라이언트가 초기화되지 않은 경우.
+            A2AClientError: 통신 오류 발생 시.
         """
         if not self.client:
             raise RuntimeError("클라이언트가 초기화되지 않았습니다. initialize()를 먼저 호출하세요.")
@@ -126,7 +230,7 @@ class A2AClientManager:
         return response_text.strip()
 
     async def send_data(self, data: dict[str, Any]) -> Any:
-        """JSON을 `DataPart`로 전송하고, 응답 내 모든 `DataPart`를 수집해 반환한다.
+        """JSON 데이터를 DataPart로 전송하고 모든 DataPart 응답을 수집합니다.
 
         Args:   
             data: 전송할 JSON 딕셔너리.
@@ -221,32 +325,39 @@ class A2AClientManager:
         return collected_data_parts
 
     async def send_data_merged(self, data: dict[str, Any], merge_mode: str = "smart") -> dict[str, Any]:
-        """JSON을 `DataPart`로 전송하고, 응답 내 모든 `DataPart.data`를 지정한 모드로 병합해 반환한다.
+        """JSON 데이터를 전송하고 모든 DataPart 응답을 병합하여 반환합니다.
 
         Args:
-            data: 전송할 JSON 딕셔너리
-            merge_mode: 병합 전략. 'smart' | 'last' | 'append'
-                - smart: 딥 머지 + 리스트는 키 기반 고유 추가
-                - last: 마지막 값 우선(얕은 덮어쓰기)
-                - append: 리스트는 단순 이어붙이고 중복 제거 시도, 스칼라는 마지막 값 우선
+            data: 전송할 JSON 딕셔너리.
+            merge_mode: 병합 전략 ('smart', 'last', 'append' 중 하나).
+                - 'smart': 딥 머지 + 리스트는 키 기반 고유 추가 (기본값, 권장)
+                - 'last': 마지막 값 우선 (얕은 덮어쓰기)
+                - 'append': 리스트는 이어붙이고 중복 제거, 스칼라는 마지막 값 우선
 
         Returns:
-            병합된 단일 딕셔너리 결과
+            병합된 단일 딕셔너리 결과.
 
         Note:
-            원본 `send_data`는 모든 `DataPart` 리스트를 반환한다. 후처리를 원하면 해당 메서드를 사용하고,
-            즉시 병합된 결과가 필요하면 이 메서드를 사용한다.
+            여러 DataPart를 개별적으로 처리하려면 send_data()를 사용하고,
+            즉시 병합된 단일 결과가 필요하면 이 메서드를 사용합니다.
         """
         parts = await self.send_data(data)
         return self._merge_data_parts(parts, mode=merge_mode)
 
     def _merge_data_parts(self, parts: list[dict[str, Any]], mode: str = "smart") -> dict[str, Any]:
-        """다수의 DataPart(dict) 리스트를 단일 dict로 병합한다.
+        """다수의 DataPart 딕셔너리 리스트를 단일 딕셔너리로 병합합니다.
+
+        Args:
+            parts: 병합할 DataPart 딕셔너리 리스트.
+            mode: 병합 전략 ('smart', 'last', 'append').
+
+        Returns:
+            병합된 단일 딕셔너리.
 
         병합 규칙:
-        - smart: dict는 재귀 병합, 리스트는 순서 유지 + 중복 제거, 스칼라는 마지막 값 우선
-        - last: 얕은 덮어쓰기 (뒤의 dict가 앞을 덮음)
-        - append: 리스트는 이어붙인 뒤 중복 제거, 스칼라는 마지막 값 우선, dict는 얕게 병합
+            - smart: dict는 재귀 병합, 리스트는 순서 유지 + 중복 제거, 스칼라는 마지막 값 우선
+            - last: 얕은 덮어쓰기 (뒤의 dict가 앞을 덮음)
+            - append: 리스트는 이어붙인 뒤 중복 제거, 스칼라는 마지막 값 우선, dict는 얕게 병합
         """
         if not isinstance(parts, list):
             return {}
@@ -322,11 +433,22 @@ class A2AClientManager:
         task_id: str,
         resume_value: Any,
     ) -> str:
-        """`input-required` 상태의 태스크에 사용자 응답을 전송하여 재개한다.
+        """input-required 상태의 작업에 사용자 응답을 전송하여 재개합니다.
 
-        - 동일한 `context_id`/`task_id`를 유지하여 서버가 기존 태스크를 이어받도록 한다.
-        - 재개 값은 DataPart의 `{ "resume": <value> }` 로 전달 (서버는 텍스트 본문도 허용).
-        - 반환값은 스트리밍 텍스트를 병합한 최종 텍스트.
+        Args:
+            context_id: 재개할 작업의 컨텍스트 ID.
+            task_id: 재개할 작업의 태스크 ID.
+            resume_value: 사용자 응답 값 (텍스트 또는 JSON).
+
+        Returns:
+            재개 후 에이전트의 최종 응답 텍스트.
+
+        Raises:
+            A2AClientError: 클라이언트가 초기화되지 않았거나 통신 오류 발생 시.
+
+        Note:
+            동일한 context_id와 task_id를 유지하여 서버가 기존 작업을 이어받도록 합니다.
+            재개 값은 DataPart의 {"resume": <value>} 형태로 전달됩니다.
         """
         if not self.client:
             raise A2AClientError("클라이언트가 초기화되지 않았습니다. initialize()를 먼저 호출하세요.")

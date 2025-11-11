@@ -1,6 +1,15 @@
 """
 LangGraph Agent를 A2A 프로토콜로 래핑하는 AgentExecutor 구현
-공식 A2A 0.3.0 패턴을 따름
+
+A2A SDK 0.3.11 기반으로 공식 AgentExecutor 패턴을 구현합니다.
+
+주요 기능:
+- 비동기 execute() 및 cancel() 메서드 구현
+- 스트리밍 응답 지원 (Server-Sent Events)
+- TaskState 생명주기 관리 (submitted → working → completed/failed)
+- HITL(Human-In-The-Loop) 지원 (input-required 상태)
+- 대용량 아티팩트 청크 전송
+- 취소 전파 메커니즘
 """
 
 from typing import Any, Callable
@@ -12,9 +21,9 @@ from src.utils.logging_config import get_logger
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
 from a2a.server.tasks import TaskUpdater
-from a2a.types import InternalError, Part, TaskState, TextPart, DataPart
+from a2a.types import InternalError, Part, TaskState, TextPart, DataPart, TaskNotFoundError
 from a2a.utils import new_agent_text_message, new_task, get_data_parts
-from a2a.utils.errors import ServerError, TaskNotFoundError
+from a2a.utils.errors import ServerError
 from langgraph.types import Command
 from uuid import uuid4
 import os

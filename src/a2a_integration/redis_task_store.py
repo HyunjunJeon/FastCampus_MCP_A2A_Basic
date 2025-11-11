@@ -1,13 +1,23 @@
 """
 Redis 기반 A2A TaskStore 구현
 
+A2A SDK 0.3.11 TaskStore 인터페이스를 Redis로 영속화하여
+재구독/백필 품질을 강화합니다.
+
 목표:
 - A2A `TaskStore` 인터페이스를 Redis로 영속화하여 재구독/백필 품질을 강화
 - InMemoryTaskStore의 휘발성 한계를 보완
+- 분산 환경에서 Task 상태 공유 지원
 
 환경변수:
+- A2A_TASK_STORE: "redis" 설정 시 Redis TaskStore 활성화 (기본값: "memory")
 - A2A_TASK_REDIS_URL: redis://localhost:6379/0 (기본값)
 - A2A_TASK_TTL_SECONDS: Task 저장 TTL(초). 0 또는 미설정 시 TTL 미사용
+
+사용 방법:
+  export A2A_TASK_STORE=redis
+  export A2A_TASK_REDIS_URL=redis://localhost:6379/0
+  export A2A_TASK_TTL_SECONDS=3600
 """
 
 from __future__ import annotations
