@@ -47,8 +47,8 @@ src_path = os.path.join(PROJECT_ROOT, "src")
 if src_path not in sys.path:
     sys.path.append(src_path)
 
-# 프로젝트 루트의 .env 파일 로드
-load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
+# 프로젝트 루트의 .env 파일 로드 (override=True로 기존 환경변수 덮어쓰기)
+load_dotenv(os.path.join(PROJECT_ROOT, ".env"), override=True)
 # Step4 데모에서는 내부 그래프의 HITL을 비활성화하고
 # UI에서 단일 승인 루프만 관리하도록 한다 (중복 승인 방지)
 os.environ.setdefault("ENABLE_HITL", "0")

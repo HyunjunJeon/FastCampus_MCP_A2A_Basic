@@ -39,8 +39,8 @@ from a2a.client import ClientFactory, A2ACardResolver, ClientConfig
 from a2a.client.helpers import create_text_message_object
 from a2a.types import AgentCard, TransportProtocol, Role, Message
 
-# 프로젝트 루트의 .env 파일 로드
-load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
+# 프로젝트 루트의 .env 파일 로드 (override=True로 기존 환경변수 덮어쓰기)
+load_dotenv(os.path.join(PROJECT_ROOT, ".env"), override=True)
 
 
 class PerformanceTracker:

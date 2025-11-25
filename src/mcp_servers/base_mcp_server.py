@@ -187,7 +187,7 @@ class BaseMCPServer(ABC):
     class ErrorHandlingMiddleware(Middleware):
         async def on_call_tool(self, context: MiddlewareContext, call_next):
             try:
-                return await call_next()
+                return await call_next(context)
             except Exception as error:  # noqa: BLE001
                 # 표준화된 에러 응답 형태로 변환을 시도
                 try:
@@ -204,7 +204,7 @@ class BaseMCPServer(ABC):
         async def on_call_tool(self, context: MiddlewareContext, call_next):
             start = time.perf_counter()
             try:
-                return await call_next()
+                return await call_next(context)
             finally:
                 duration_ms = (time.perf_counter() - start) * 1000.0
                 try:
@@ -224,7 +224,7 @@ class BaseMCPServer(ABC):
                         "session_id": getattr(context.fastmcp_context, "session_id", None),
                     }
                     logger.info(f"Tool call start: {meta}")
-                result = await call_next()
+                result = await call_next(context)
                 if logger:
                     duration_ms = context.fastmcp_context.get_state("duration_ms")
                     logger.info(f"Tool call end: duration_ms={duration_ms}")
@@ -294,7 +294,7 @@ class BaseMCPServer(ABC):
                     p.set(key_tokens, tokens, ex=2)
                     await p.execute()
 
-                return await call_next()
+                return await call_next(context)
             except Exception:
                 raise
 

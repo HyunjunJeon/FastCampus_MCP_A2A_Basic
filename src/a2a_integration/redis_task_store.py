@@ -28,6 +28,7 @@ import redis.asyncio as redis
 
 from a2a.types import Task
 from a2a.server.tasks.task_store import TaskStore
+from a2a.server.context import ServerCallContext
 
 
 class RedisTaskStore(TaskStore):
@@ -52,7 +53,10 @@ class RedisTaskStore(TaskStore):
     def _key(self, task_id: str) -> str:
         return f"a2a:task:{task_id}"
 
-    async def save(self, task: Task) -> None:  # type: ignore[override]
+    async def save(
+        self, task: Task, context: ServerCallContext | None = None
+    ) -> None:
+        """Saves or updates a task in Redis."""
         client = await self._get_client()
         data = task.model_dump_json()
         key = self._key(task.id)
@@ -61,7 +65,10 @@ class RedisTaskStore(TaskStore):
         else:
             await client.set(key, data)
 
-    async def get(self, task_id: str) -> Task | None:  # type: ignore[override]
+    async def get(
+        self, task_id: str, context: ServerCallContext | None = None
+    ) -> Task | None:
+        """Retrieves a task from Redis by ID."""
         client = await self._get_client()
         raw = await client.get(self._key(task_id))
         if not raw:
@@ -75,7 +82,10 @@ class RedisTaskStore(TaskStore):
         except Exception:
             return None
 
-    async def delete(self, task_id: str) -> None:  # type: ignore[override]
+    async def delete(
+        self, task_id: str, context: ServerCallContext | None = None
+    ) -> None:
+        """Deletes a task from Redis by ID."""
         client = await self._get_client()
         await client.delete(self._key(task_id))
 
