@@ -6,6 +6,7 @@ Step 1-2: MCP 도구를 사용하는 LangGraph 에이전트 (BaseGraphAgent 기�
 """
 
 from __future__ import annotations
+import os
 from typing import ClassVar
 
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -20,6 +21,9 @@ from src.lg_agents.base.base_graph_agent import BaseGraphAgent
 
 
 logger = get_logger(__name__)
+
+# MCP 서버 URL 환경변수 (Docker 환경에서는 서비스명 사용)
+DEFAULT_TAVILY_MCP_URL = os.getenv("MCP_TAVILY_URL", "http://localhost:3001") + "/mcp/"
 
 
 class SimpleLangGraphWithMCPAgent(BaseGraphAgent):
@@ -53,11 +57,10 @@ class SimpleLangGraphWithMCPAgent(BaseGraphAgent):
             max_retry_attempts=max_retry_attempts,
             agent_name=agent_name,
             is_debug=is_debug,
-            auto_build=False, # NOTE: Key point!
+            auto_build=False,  # NOTE: Key point!
         )
-
         self.llm = model
-        self.mcp_server_url = "http://localhost:3001/mcp/"
+        self.mcp_server_url = DEFAULT_TAVILY_MCP_URL
         self.mcp_server_config = {"transport": "streamable_http"}
         self.mcp_client = MultiServerMCPClient(
             {"tavily-search": {"url": self.mcp_server_url, **self.mcp_server_config}}
@@ -79,7 +82,7 @@ class SimpleLangGraphWithMCPAgent(BaseGraphAgent):
         is_debug: bool = True,
     ) -> "SimpleLangGraphWithMCPAgent":
         """
-        비동기 초기화 팩토리. 
+        비동기 초기화 팩토리.
         MCP 도구를 await로 로딩한 뒤 그래프를 빌드한다.
         """
         self = cls(
@@ -94,15 +97,21 @@ class SimpleLangGraphWithMCPAgent(BaseGraphAgent):
             agent_name=agent_name,
             is_debug=is_debug,
         )
-        self.tools = await self.mcp_client.get_tools() # NOTE: Key point!
-        self.build_graph() # NOTE: 여기서는 자식 그래프에서 호출함.
+        try:
+            self.tools = await self.mcp_client.get_tools()  # NOTE: Key point!
+        except Exception as e:
+            logger.error(f"MCP 도구 로딩 실패: {e}")
+            self.tools = []
+        self.build_graph()  # NOTE: 여기서는 자식 그래프에서 호출함.
         return self
 
     def init_nodes(self, graph: StateGraph) -> None:
-        graph.add_node(self.get_node_name("REACT"), create_react_agent(
-            model=self.llm,
-            tools=self.tools or [],
-            prompt="""
+        graph.add_node(
+            self.get_node_name("REACT"),
+            create_react_agent(
+                model=self.llm,
+                tools=self.tools or [],
+                prompt="""
                 당신은 웹 도구를 가지고 있는 검색 전문가입니다. 
                 필요 시 가진 도구를 사용해 답변하세요.
                 - search_web(query): 일반 웹 검색

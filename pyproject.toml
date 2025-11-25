@@ -26,6 +26,7 @@ dependencies = [
     "httpx>=0.28.1",
     "httpx-sse>=0.4.3",
     "arxiv>=2.3.0",
+    "ipykernel>=7.1.0",
 ]
 
 [dependency-groups]

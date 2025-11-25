@@ -1,0 +1,182 @@
+# FastCampus MCP & A2A 전체 환경 Docker Compose
+# MCP 서버 + Redis + 예제 실행 환경을 한 번에 실행
+#
+# 사용법:
+#   docker-compose up -d          # 전체 환경 시작 (백그라운드)
+#   docker-compose up app         # 예제 실행 컨테이너만 시작 (인터랙티브)
+#   docker-compose exec app bash  # 실행 중인 컨테이너에 접속
+#   docker-compose down           # 전체 환경 종료
+#
+# 예제 실행:
+#   docker-compose run --rm app uv run python examples/step1_mcp_langgraph.py
+
+services:
+  # ============================================
+  # 메인 애플리케이션 (예제 실행용)
+  # ============================================
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fc_mcp_a2a_app
+    stdin_open: true   # 인터랙티브 모드
+    tty: true          # TTY 할당
+    volumes:
+      # .env 파일을 런타임에 마운트 (API 키 보안)
+      - ./.env:/app/.env:ro
+      # 로그 파일 저장을 위한 볼륨
+      - ./logs:/app/logs
+    environment:
+      # MCP 서버 URL (Docker 네트워크 내에서 서비스명으로 접근)
+      - MCP_ARXIV_URL=http://arxiv-mcp:3000
+      - MCP_TAVILY_URL=http://tavily-mcp:3001
+      - MCP_SERPER_URL=http://serper-mcp:3002
+      - REDIS_URL=redis://redis:6379/0
+    ports:
+      # A2A 서버 포트
+      - "8090:8090"
+      - "8091:8091"
+      - "8092:8092"
+      # HITL 웹 대시보드 포트
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+      tavily-mcp:
+        condition: service_healthy
+      arxiv-mcp:
+        condition: service_healthy
+      serper-mcp:
+        condition: service_healthy
+    networks:
+      - mcp_network
+    # 기본 명령: bash 쉘 (인터랙티브 모드로 예제 실행 가능)
+    command: bash
+
+  # ============================================
+  # MCP 서버들 (기존 docker-compose.mcp.yml에서 가져옴)
+  # ============================================
+
+  # Tavily 웹 검색 MCP 서버
+  tavily-mcp:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.mcp
+    container_name: mcp_tavily_server
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - HOST=0.0.0.0
+      - LOG_LEVEL=info
+      - TAVILY_API_KEY=${TAVILY_API_KEY:-}
+    env_file:
+      - ./.env
+    command: ["mcp_servers.tavily_search.server:create_app", "--host", "0.0.0.0", "--port", "3001", "--factory", "--workers", "1"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - mcp_network
+
+  # ArXiv 논문 검색 MCP 서버
+  arxiv-mcp:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.mcp
+    container_name: mcp_arxiv_server
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - HOST=0.0.0.0
+      - LOG_LEVEL=info
+    env_file:
+      - ./.env
+    command: ["mcp_servers.arxiv_search.server:create_app", "--host", "0.0.0.0", "--port", "3000", "--factory", "--workers", "1"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - mcp_network
+
+  # Serper Google 검색 MCP 서버
+  serper-mcp:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.mcp
+    container_name: mcp_serper_server
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    environment:
+      - PORT=3002
+      - HOST=0.0.0.0
+      - LOG_LEVEL=info
+      - SERPER_API_KEY=${SERPER_API_KEY:-}
+    env_file:
+      - ./.env
+    command: ["mcp_servers.serper_search.server:create_app", "--host", "0.0.0.0", "--port", "3002", "--factory", "--workers", "1"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - mcp_network
+
+  # ============================================
+  # Redis (HITL 및 캐싱용)
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    container_name: mcp_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - mcp_network
+
+  # Redis Commander (선택사항 - 개발용)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: mcp_redis_commander
+    restart: unless-stopped
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+      - HTTP_USER=admin
+      - HTTP_PASSWORD=mcp2025
+    ports:
+      - "8081:8081"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - mcp_network
+    profiles:
+      - tools
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  mcp_network:
+    driver: bridge

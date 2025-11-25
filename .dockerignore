@@ -19,20 +19,15 @@ venv/
 .idea/
 *.swp
 *.swo
+.cursor/
 
 # Git
 .git/
 .gitignore
 
-# Docker
-Dockerfile
+# Docker (개별 Dockerfile은 제외하지 않음 - 빌드 컨텍스트 필요)
 docker-compose.yml
 .dockerignore
-
-# Documentation
-README.md
-docs/
-*.md
 
 # Logs
 logs/
@@ -40,7 +35,9 @@ logs/
 
 # Test files
 tests/
-examples/
 
 # Development scripts
-scripts/ 
+scripts/
+
+# CLAUDE.md는 제외 (개발 도구용)
+CLAUDE.md 
