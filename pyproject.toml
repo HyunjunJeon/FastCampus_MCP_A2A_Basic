@@ -5,9 +5,7 @@ description = "FastCampus Online Lecture - MCP & A2A - Practice1: LangGraph & MC
 readme = "README.md"
 requires-python = ">=3.12"
 license = { file = "LICENSE" }
-authors = [
-    { name = "Hyunjun Jeon", email = "jeonhj920@gmail.com" }
-]
+authors = [{ name = "Hyunjun Jeon", email = "jeonhj920@gmail.com" }]
 dependencies = [
     "a2a-sdk[grpc]>=0.3.22",
     "fastmcp>=2.14.1",
@@ -26,15 +24,11 @@ dependencies = [
     "httpx>=0.28.1",
     "httpx-sse>=0.4.3",
     "arxiv>=2.3.0",
+    "ipykernel>=7.1.0",
 ]
 
 [dependency-groups]
-dev = [
-    "pytest>=9.0.0",
-    "pytest-asyncio>=1.3.0",
-    "ruff>=0.14.4",
-    "ty>=0.0.1a26",
-]
+dev = ["pytest>=9.0.0", "pytest-asyncio>=1.3.0", "ruff>=0.14.4", "ty>=0.0.1a26"]
 
 [tool.pytest.ini_options]
 filterwarnings = [

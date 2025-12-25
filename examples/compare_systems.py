@@ -42,8 +42,8 @@ from dotenv import load_dotenv
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-# .env 파일 로드
-load_dotenv(PROJECT_ROOT / ".env")
+# .env 파일 로드 (override=True로 기존 환경변수 덮어쓰기)
+load_dotenv(PROJECT_ROOT / ".env", override=True)
 
 # 로깅 설정
 from src.utils.logging_config import get_logger

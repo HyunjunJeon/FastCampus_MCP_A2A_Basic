@@ -28,18 +28,19 @@ import asyncio
 import os
 import sys
 from pathlib import Path
-from src.a2a_integration.a2a_lg_utils import create_agent_card
-from dotenv import load_dotenv
-from langchain.chat_models import init_chat_model
 
-# 프로젝트 루트 경로 추가 - 상위 디렉토리에서 src 모듈 import
+# 프로젝트 루트 경로 추가 - 상위 디렉토리에서 src 모듈 import (반드시 src import 전에 실행)
 PROJECT_ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(PROJECT_ROOT))
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
+from dotenv import load_dotenv
+load_dotenv(PROJECT_ROOT / ".env", override=True)
+
+from langchain.chat_models import init_chat_model
+from src.a2a_integration.a2a_lg_utils import create_agent_card
 from src.a2a_integration.a2a_lg_embedded_server_manager import start_embedded_graph_server
 from src.a2a_integration.a2a_lg_client_utils import A2AClientManager
-
-load_dotenv(PROJECT_ROOT / ".env")
 
 
 async def test_a2a_agent_client():

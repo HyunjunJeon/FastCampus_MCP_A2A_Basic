@@ -60,8 +60,8 @@ def safe_print(*args, **kwargs):
             pass
         return
 
-# 환경변수 로드 - API 키 및 설정 값들
-load_dotenv(PROJECT_ROOT / ".env")
+# 환경변수 로드 - API 키 및 설정 값들 (override=True로 기존 환경변수 덮어쓰기)
+load_dotenv(PROJECT_ROOT / ".env", override=True)
 
 
 # --- 런타임 로그 파일 저장 설정 (logs/step3_*.log) ---

@@ -16,10 +16,14 @@ from a2a.types import AgentCard, Message, Role, TransportProtocol, DataPart, Par
 from a2a.client import A2ACardResolver, ClientConfig, ClientFactory, A2AClientError
 from a2a.client.helpers import create_text_message_object
 from uuid import uuid4
+import httpx
 from src.utils.logging_config import get_logger
 from src.utils.http_client import http_client
 
 logger = get_logger(__name__)
+
+# Deep Research 등 장시간 작업을 위한 기본 타임아웃 (초)
+DEFAULT_A2A_TIMEOUT = 600.0  # 10분
 
 
 class A2AClientManager:
@@ -56,6 +60,7 @@ class A2AClientManager:
         use_client_preference: bool = False,
         accepted_output_modes: list[str] | None = None,
         supported_transports: list[TransportProtocol] | None = None,
+        timeout: float | None = None,
     ):
         """A2A 클라이언트 매니저를 초기화합니다.
 
@@ -69,6 +74,8 @@ class A2AClientManager:
                 None이면 모든 모드를 수락합니다.
             supported_transports: 지원할 전송 프로토콜 리스트.
                 None이면 JSON-RPC, HTTP+JSON, gRPC 순서로 시도합니다.
+            timeout: HTTP 요청 타임아웃 (초). None이면 DEFAULT_A2A_TIMEOUT (600초) 사용.
+                Deep Research 등 장시간 작업을 위해 충분히 큰 값을 권장합니다.
 
         Examples:
             기본 사용:
@@ -88,6 +95,7 @@ class A2AClientManager:
         self.use_client_preference = use_client_preference
         self.accepted_output_modes = accepted_output_modes or []
         self.supported_transports = supported_transports
+        self.timeout = timeout if timeout is not None else DEFAULT_A2A_TIMEOUT
         self.client = None
         self.agent_card: AgentCard | None = None
         self._httpx_client = None
@@ -115,33 +123,47 @@ class A2AClientManager:
         Note:
             컨텍스트 매니저 (async with)를 사용하면 자동으로 호출됩니다.
         """
-        # 공통 HTTP 클라이언트 세션을 사용해 Agent Card를 1회 조회
+        # 장시간 작업을 위한 타임아웃 설정된 httpx 클라이언트 생성
+        self._httpx_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(
+                connect=10.0,  # 연결 타임아웃
+                read=self.timeout,  # 읽기 타임아웃 (Deep Research 등 장시간 작업용)
+                write=30.0,  # 쓰기 타임아웃
+                pool=10.0,  # 연결 풀 대기 타임아웃
+            ),
+            follow_redirects=True,
+        )
+
+        # Agent Card 조회
         resolver = A2ACardResolver(
-            httpx_client=http_client,
+            httpx_client=self._httpx_client,
             base_url=self.base_url,
         )
         self.agent_card: AgentCard = await resolver.get_agent_card()
-        
-        # A2A SDK 0.3.11 ClientConfig 구성
+
+        # A2A SDK ClientConfig 구성 - httpx_client 포함
         config_kwargs = {
             "streaming": self.streaming,
+            "httpx_client": self._httpx_client,  # 타임아웃 설정된 클라이언트 전달
             "supported_transports": self.supported_transports or [
                 TransportProtocol.jsonrpc,  # JSON-RPC 2.0 기본 프로토콜
                 TransportProtocol.http_json,  # RESTful HTTP+JSON
                 TransportProtocol.grpc,  # gRPC (A2A SDK 0.3.11+)
             ],
         }
-        
+
         if self.polling:
             config_kwargs["polling"] = self.polling
         if self.use_client_preference:
             config_kwargs["use_client_preference"] = self.use_client_preference
         if self.accepted_output_modes:
             config_kwargs["accepted_output_modes"] = self.accepted_output_modes
-        
+
         config = ClientConfig(**config_kwargs)
         factory = ClientFactory(config=config)
         self.client = factory.create(card=self.agent_card)
+
+        logger.info(f"A2A 클라이언트 초기화 완료 (timeout={self.timeout}s): {self.base_url}")
         return self
 
     async def get_agent_card(self) -> AgentCard:

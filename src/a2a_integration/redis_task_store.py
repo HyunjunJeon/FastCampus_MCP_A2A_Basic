@@ -40,9 +40,13 @@ class RedisTaskStore(TaskStore):
     - TTL: 환경변수 설정 시 적용
     """
 
-    def __init__(self, redis_url: str = "redis://localhost:6379/0", ttl_seconds: int = 0) -> None:
+    def __init__(
+        self, redis_url: str = "redis://localhost:6379/0", ttl_seconds: int = 0
+    ) -> None:
         self._redis_url = redis_url
-        self._ttl_seconds = ttl_seconds if isinstance(ttl_seconds, int) and ttl_seconds > 0 else 0
+        self._ttl_seconds = (
+            ttl_seconds if isinstance(ttl_seconds, int) and ttl_seconds > 0 else 0
+        )
         self._redis: Optional[redis.Redis] = None
 
     async def _get_client(self) -> redis.Redis:
@@ -53,9 +57,7 @@ class RedisTaskStore(TaskStore):
     def _key(self, task_id: str) -> str:
         return f"a2a:task:{task_id}"
 
-    async def save(
-        self, task: Task, context: ServerCallContext | None = None
-    ) -> None:
+    async def save(self, task: Task, context: ServerCallContext | None = None) -> None:
         """Saves or updates a task in the Redis store.
 
         Args:
@@ -106,5 +108,3 @@ class RedisTaskStore(TaskStore):
         """
         client = await self._get_client()
         await client.delete(self._key(task_id))
-
-
