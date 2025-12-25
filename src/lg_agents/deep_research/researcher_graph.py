@@ -20,7 +20,6 @@ from langchain_core.messages import (
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import START, END, StateGraph
 from langgraph.types import Command
-from pydantic import BaseModel
 from typing_extensions import TypedDict
 
 from src.config import ResearchConfig
@@ -36,7 +35,6 @@ from .prompts import (
 from langchain_mcp_adapters.tools import load_mcp_tools
 from urllib.parse import urlparse
 from src.utils.http_client import http_client
-from src.lg_agents.deep_research.shared import ResearchComplete
 
 
 logger = get_logger(__name__)
@@ -560,8 +558,8 @@ async def compress_research(state: ResearcherState, config: RunnableConfig):
 researcher_builder = StateGraph(
     state_schema=ResearcherState,
     input_schema=ResearcherInputState,
-    output_schema=ResearcherOutputState, 
-    config_schema=ResearchConfig,
+    output_schema=ResearcherOutputState,
+    context_schema=ResearchConfig,
 )
 researcher_builder.add_node("researcher", researcher)
 researcher_builder.add_node("researcher_tools", researcher_tools)

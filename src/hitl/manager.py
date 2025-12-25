@@ -4,7 +4,7 @@ HITL 매니저 - Human-In-The-Loop 매니저
 import asyncio
 import logging
 from typing import Optional, Dict, Any, List, Callable
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from .models import ApprovalRequest, ApprovalStatus, ApprovalType, HITLPolicy
 from .storage import approval_storage

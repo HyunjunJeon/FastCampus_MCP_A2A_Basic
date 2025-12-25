@@ -290,7 +290,7 @@ async def final_report_generation(state: AgentState, config: RunnableConfig):
         return {"final_report": f"Error generating final report: {e}", **cleared_state}
 
 # 선언
-deep_researcher_builder = StateGraph(state_schema=AgentState, config_schema=ResearchConfig)
+deep_researcher_builder = StateGraph(state_schema=AgentState, context_schema=ResearchConfig)
 # 노드
 deep_researcher_builder.add_node("clarify_with_user", clarify_with_user)
 deep_researcher_builder.add_node("write_research_brief", write_research_brief)

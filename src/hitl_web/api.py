@@ -2,6 +2,7 @@
 HITL 웹 인터페이스 FastAPI 서버
 """
 
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import Response
@@ -12,13 +13,12 @@ from pydantic import BaseModel
 from typing import Optional, List
 import logging
 from pathlib import Path
-from datetime import timezone
 
-from hitl.manager import hitl_manager
+from src.hitl.manager import hitl_manager
 from src.utils.http_client import http_client, cleanup_http_clients
-from hitl_web.websocket_handler import websocket_manager
-from hitl.models import ApprovalRequest, ApprovalStatus, ApprovalType
-from hitl.webhook_storage import webhook_storage
+from src.hitl_web.websocket_handler import websocket_manager
+from src.hitl.models import ApprovalRequest, ApprovalStatus, ApprovalType
+from src.hitl.webhook_storage import webhook_storage
 
 logger = logging.getLogger(__name__)
 
@@ -75,8 +75,6 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="HITL Approval System", lifespan=lifespan)
 
 # CORS 설정 (환경변수 기반 화이트리스트)
-import os
-
 def _truthy(val: str | None) -> bool:
     return (val or "").strip().lower() in {"1", "true", "yes", "y"}
 

@@ -9,13 +9,13 @@ authors = [
     { name = "Hyunjun Jeon", email = "jeonhj920@gmail.com" }
 ]
 dependencies = [
-    "a2a-sdk>=0.3.11",
-    "fastmcp>=2.13.0.2",
-    "langchain>=1.0.5",
+    "a2a-sdk[grpc]>=0.3.22",
+    "fastmcp>=2.14.1",
+    "langchain>=1.2.0",
     "langchain-google-genai>=3.0.2",
-    "langchain-mcp-adapters>=0.1.12",
-    "langchain-openai>=1.0.2",
-    "langgraph>=1.0.3",
+    "langchain-mcp-adapters>=0.2.1",
+    "langchain-openai>=1.1.6",
+    "langgraph>=1.0.5",
     "python-dotenv>=1.2.1",
     "pytz>=2025.2",
     "tavily-python>=0.7.12",

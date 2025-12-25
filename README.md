@@ -2,7 +2,7 @@
 
 FastCampus 온라인강의 “MCP 와 A2A 로 개발하는 Multi Agent”(Part2 - Chapter2. LangGraph와 MCP & A2A) 실습 저장소입니다. 본 저장소는 Step 1 → 4를 순서대로 따라가면 멀티 에이전트 시스템이 완성되도록 구성되어 있습니다.
 
-![fc_lecture.png](fc_lecture.png)
+[제 강의 전용 할인 페이지](https://fastcampus.co.kr/secret_online_jhjagent)
 
 ---
 

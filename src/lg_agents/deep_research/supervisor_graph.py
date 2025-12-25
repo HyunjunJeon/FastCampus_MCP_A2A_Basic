@@ -420,10 +420,10 @@ def build_supervisor_subgraph():
     """Supervisor 서브그래프"""
 
     workflow = StateGraph(
-        state_schema=SupervisorOverallState, 
+        state_schema=SupervisorOverallState,
         input_schema=SupervisorInputState,
         output_schema=SupervisorOutputState,
-        config_schema=ResearchConfig,
+        context_schema=ResearchConfig,
     )
     # 노드
     workflow.add_node("supervisor", supervisor)

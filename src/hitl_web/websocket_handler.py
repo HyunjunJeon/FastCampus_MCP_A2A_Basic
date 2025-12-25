@@ -8,7 +8,6 @@ from src.utils.logging_config import get_logger
 from typing import Set, Dict, Any
 from fastapi import WebSocket, WebSocketDisconnect
 
-from hitl.manager import hitl_manager
 
 
 logger = get_logger(__name__)

@@ -1,7 +1,7 @@
 """
 Redis 기반 A2A TaskStore 구현
 
-A2A SDK 0.3.11 TaskStore 인터페이스를 Redis로 영속화하여
+A2A SDK 0.3.22 TaskStore 인터페이스를 Redis로 영속화하여
 재구독/백필 품질을 강화합니다.
 
 목표:
@@ -26,6 +26,7 @@ from typing import Optional
 
 import redis.asyncio as redis
 
+from a2a.server.context import ServerCallContext
 from a2a.types import Task
 from a2a.server.tasks.task_store import TaskStore
 
@@ -52,7 +53,15 @@ class RedisTaskStore(TaskStore):
     def _key(self, task_id: str) -> str:
         return f"a2a:task:{task_id}"
 
-    async def save(self, task: Task) -> None:  # type: ignore[override]
+    async def save(
+        self, task: Task, context: ServerCallContext | None = None
+    ) -> None:
+        """Saves or updates a task in the Redis store.
+
+        Args:
+            task: The Task object to save.
+            context: Optional server call context for multi-tenant scenarios.
+        """
         client = await self._get_client()
         data = task.model_dump_json()
         key = self._key(task.id)
@@ -61,7 +70,18 @@ class RedisTaskStore(TaskStore):
         else:
             await client.set(key, data)
 
-    async def get(self, task_id: str) -> Task | None:  # type: ignore[override]
+    async def get(
+        self, task_id: str, context: ServerCallContext | None = None
+    ) -> Task | None:
+        """Retrieves a task from the Redis store by ID.
+
+        Args:
+            task_id: The ID of the task to retrieve.
+            context: Optional server call context for multi-tenant scenarios.
+
+        Returns:
+            The Task object if found, None otherwise.
+        """
         client = await self._get_client()
         raw = await client.get(self._key(task_id))
         if not raw:
@@ -75,7 +95,15 @@ class RedisTaskStore(TaskStore):
         except Exception:
             return None
 
-    async def delete(self, task_id: str) -> None:  # type: ignore[override]
+    async def delete(
+        self, task_id: str, context: ServerCallContext | None = None
+    ) -> None:
+        """Deletes a task from the Redis store by ID.
+
+        Args:
+            task_id: The ID of the task to delete.
+            context: Optional server call context for multi-tenant scenarios.
+        """
         client = await self._get_client()
         await client.delete(self._key(task_id))
 
