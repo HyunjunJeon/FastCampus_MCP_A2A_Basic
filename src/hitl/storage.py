@@ -50,7 +50,7 @@ await storage.disconnect()
 """
 import json
 import logging
-from typing import Optional, List
+from typing import Optional, List, Any, AsyncIterator
 from datetime import datetime, timedelta
 import redis.asyncio as redis
 from contextlib import asynccontextmanager
@@ -60,14 +60,55 @@ from .models import ApprovalRequest, ApprovalStatus, ApprovalType
 logger = logging.getLogger(__name__)
 
 class ApprovalStorage:
-    """승인 요청 저장소 (Redis 기반)"""
-    
-    def __init__(self, redis_url: str = "redis://localhost:6379"):
+    """Redis 기반 승인 요청 영속성 저장소.
+
+    HITL 시스템의 승인 요청 데이터를 Redis에 저장하고,
+    Pub/Sub을 통해 상태 변경을 실시간으로 브로드캐스트합니다.
+
+    Attributes:
+        redis_url: Redis 서버 연결 URL.
+
+    Note:
+        싱글톤 인스턴스 `approval_storage`를 통해 접근하는 것을 권장합니다.
+    """
+
+    def __init__(self, redis_url: str = "redis://localhost:6379") -> None:
+        """ApprovalStorage 인스턴스를 초기화합니다.
+
+        Args:
+            redis_url: Redis 서버 연결 URL (기본: redis://localhost:6379).
+        """
         self.redis_url = redis_url
-        self._redis: Optional[redis.Redis] = None
+        self._redis: Optional[redis.Redis[bytes]] = None
         self._pubsub: Optional[redis.client.PubSub] = None
-        
-    async def connect(self):
+
+    def _get_redis(self) -> redis.Redis[bytes]:
+        """연결된 Redis 클라이언트를 반환합니다.
+
+        Returns:
+            Redis 클라이언트 인스턴스.
+
+        Raises:
+            RuntimeError: Redis가 연결되지 않은 경우.
+        """
+        if self._redis is None:
+            raise RuntimeError("Redis not connected. Call connect() first.")
+        return self._redis
+
+    def _get_pubsub(self) -> redis.client.PubSub:
+        """연결된 PubSub 인스턴스를 반환합니다.
+
+        Returns:
+            PubSub 인스턴스.
+
+        Raises:
+            RuntimeError: PubSub이 초기화되지 않은 경우.
+        """
+        if self._pubsub is None:
+            raise RuntimeError("PubSub not initialized. Call connect() first.")
+        return self._pubsub
+
+    async def connect(self) -> None:
         """Redis 연결"""
         # 기존 연결이 있다면 정리 후 재연결
         try:
@@ -80,7 +121,7 @@ class ApprovalStorage:
         self._pubsub = self._redis.pubsub()
         logger.info("Redis 연결 완료")
     
-    async def disconnect(self):
+    async def disconnect(self) -> None:
         """연결 종료"""
         if self._pubsub:
             await self._pubsub.close()
@@ -88,7 +129,7 @@ class ApprovalStorage:
             await self._redis.close()
     
     @asynccontextmanager
-    async def connection(self):
+    async def connection(self) -> AsyncIterator["ApprovalStorage"]:
         """컨텍스트 매니저"""
         await self.connect()
         try:
@@ -98,22 +139,23 @@ class ApprovalStorage:
     
     async def create_approval_request(self, request: ApprovalRequest) -> str:
         """승인 요청 생성"""
+        r = self._get_redis()
         key = f"approval:{request.request_id}"
-        
+
         # Redis에 저장
-        await self._redis.setex(
+        await r.setex(
             key,
             timedelta(hours=24),  # 24시간 TTL
             request.model_dump_json()
         )
-        
+
         # 인덱스 추가
-        await self._redis.sadd("approvals:pending", request.request_id)
-        await self._redis.sadd(f"approvals:agent:{request.agent_id}", request.request_id)
-        await self._redis.sadd(f"approvals:type:{request.approval_type.value}", request.request_id)
-        
+        await r.sadd("approvals:pending", request.request_id)
+        await r.sadd(f"approvals:agent:{request.agent_id}", request.request_id)
+        await r.sadd(f"approvals:type:{request.approval_type.value}", request.request_id)
+
         # 이벤트 발행
-        await self._redis.publish(
+        await r.publish(
             "approval:created",
             json.dumps({
                 "request_id": request.request_id,
@@ -122,14 +164,15 @@ class ApprovalStorage:
                 "priority": request.priority
             })
         )
-        
+
         logger.info(f"승인 요청 생성: {request.request_id}")
         return request.request_id
-    
+
     async def get_approval_request(self, request_id: str) -> Optional[ApprovalRequest]:
         """승인 요청 조회"""
+        r = self._get_redis()
         key = f"approval:{request_id}"
-        data = await self._redis.get(key)
+        data = await r.get(key)
         
         if data:
             return ApprovalRequest.model_validate_json(data)
@@ -147,28 +190,30 @@ class ApprovalStorage:
         request = await self.get_approval_request(request_id)
         if not request:
             return False
-        
+
+        r = self._get_redis()
+
         # 상태 업데이트
         request.status = status
         request.decided_at = datetime.utcnow()
         request.decided_by = decided_by
         request.decision = decision
         request.decision_reason = reason
-        
+
         # Redis 업데이트
         key = f"approval:{request_id}"
-        await self._redis.setex(
+        await r.setex(
             key,
             timedelta(hours=24),
             request.model_dump_json()
         )
-        
+
         # 인덱스 업데이트
-        await self._redis.srem("approvals:pending", request_id)
-        await self._redis.sadd(f"approvals:{status.value}", request_id)
-        
+        await r.srem("approvals:pending", request_id)
+        await r.sadd(f"approvals:{status.value}", request_id)
+
         # 이벤트 발행
-        await self._redis.publish(
+        await r.publish(
             f"approval:{status.value}",
             json.dumps({
                 "request_id": request_id,
@@ -188,16 +233,17 @@ class ApprovalStorage:
         limit: int = 100
     ) -> List[ApprovalRequest]:
         """대기 중인 승인 요청 조회"""
+        r = self._get_redis()
         # 기본 대기 목록
-        pending_ids = await self._redis.smembers("approvals:pending")
-        
+        pending_ids = await r.smembers("approvals:pending")
+
         # 필터링
         if agent_id:
-            agent_ids = await self._redis.smembers(f"approvals:agent:{agent_id}")
+            agent_ids = await r.smembers(f"approvals:agent:{agent_id}")
             pending_ids = pending_ids.intersection(agent_ids)
-        
+
         if approval_type:
-            type_ids = await self._redis.smembers(f"approvals:type:{approval_type.value}")
+            type_ids = await r.smembers(f"approvals:type:{approval_type.value}")
             pending_ids = pending_ids.intersection(type_ids)
         
         # 요청 로드
@@ -220,16 +266,17 @@ class ApprovalStorage:
         limit: int = 100
     ) -> List[ApprovalRequest]:
         """승인된 승인 요청 조회"""
+        r = self._get_redis()
         # 기본 승인 목록
-        approved_ids = await self._redis.smembers("approvals:approved")
-        
+        approved_ids = await r.smembers("approvals:approved")
+
         # 필터링
         if agent_id:
-            agent_ids = await self._redis.smembers(f"approvals:agent:{agent_id}")
+            agent_ids = await r.smembers(f"approvals:agent:{agent_id}")
             approved_ids = approved_ids.intersection(agent_ids)
-        
+
         if approval_type:
-            type_ids = await self._redis.smembers(f"approvals:type:{approval_type.value}")
+            type_ids = await r.smembers(f"approvals:type:{approval_type.value}")
             approved_ids = approved_ids.intersection(type_ids)
         
         # 요청 로드
@@ -251,16 +298,17 @@ class ApprovalStorage:
         limit: int = 100
     ) -> List[ApprovalRequest]:
         """거부된 승인 요청 조회"""
+        r = self._get_redis()
         # 기본 거부 목록
-        rejected_ids = await self._redis.smembers("approvals:rejected")
-        
+        rejected_ids = await r.smembers("approvals:rejected")
+
         # 필터링
         if agent_id:
-            agent_ids = await self._redis.smembers(f"approvals:agent:{agent_id}")
+            agent_ids = await r.smembers(f"approvals:agent:{agent_id}")
             rejected_ids = rejected_ids.intersection(agent_ids)
-        
+
         if approval_type:
-            type_ids = await self._redis.smembers(f"approvals:type:{approval_type.value}")
+            type_ids = await r.smembers(f"approvals:type:{approval_type.value}")
             rejected_ids = rejected_ids.intersection(type_ids)
         
         # 요청 로드
@@ -277,8 +325,9 @@ class ApprovalStorage:
     
     async def check_expired_approvals(self) -> List[str]:
         """만료된 승인 요청 확인 및 처리"""
+        r = self._get_redis()
         expired = []
-        pending_ids = await self._redis.smembers("approvals:pending")
+        pending_ids = await r.smembers("approvals:pending")
         
         for request_id in pending_ids:
             request = await self.get_approval_request(request_id.decode())
@@ -296,16 +345,18 @@ class ApprovalStorage:
         
         return expired
     
-    async def subscribe_to_events(self, channels: List[str]):
+    async def subscribe_to_events(self, channels: List[str]) -> None:
         """이벤트 구독"""
         if self._pubsub is None:
             await self.connect()
-        await self._pubsub.subscribe(*channels)
+        pubsub = self._get_pubsub()
+        await pubsub.subscribe(*channels)
         logger.info(f"이벤트 구독: {channels}")
-    
-    async def get_event(self):
+
+    async def get_event(self) -> Optional[dict[str, Any]]:
         """이벤트 수신"""
-        message = await self._pubsub.get_message(ignore_subscribe_messages=True)
+        pubsub = self._get_pubsub()
+        message = await pubsub.get_message(ignore_subscribe_messages=True)
         if message and message['type'] == 'message':
             return {
                 'channel': message['channel'].decode(),

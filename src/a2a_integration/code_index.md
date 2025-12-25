@@ -2,7 +2,7 @@
 
 LangGraph 그래프를 A2A 프로토콜 서버/클라이언트로 감싸고 실행/헬스/스트리밍을 지원하는 통합 모듈.
 
-**A2A SDK 버전**: 0.3.11 (2025-11-11 검증 완료)
+**A2A SDK 버전**: 0.3.22+ (최신 버전 사용 중)
 
 ## 주요 특징
 
@@ -16,25 +16,25 @@ LangGraph 그래프를 A2A 프로토콜 서버/클라이언트로 감싸고 실�
 
 - **__init__.py**: `to_a2a_starlette_server`, `to_a2a_run_uvicorn`, `create_agent_card` export.
   
-- **a2a_lg_agent_executor.py** (943줄): LangGraph `CompiledStateGraph`를 A2A `AgentExecutor`로 래핑
+- **a2a_lg_agent_executor.py** (951줄): LangGraph `CompiledStateGraph`를 A2A `AgentExecutor`로 래핑
   - 스트리밍 텍스트 추출 및 증분 병합
   - 대용량 아티팩트 청크 전송 (8KB 단위)
   - 취소 전파 및 HITL 인터럽트 처리
   - 하트비트 및 진행 상태 이벤트
 
-- **a2a_lg_client_utils.py** (533줄): A2A 클라이언트 유틸리티
+- **a2a_lg_client_utils.py** (676줄): A2A 클라이언트 유틸리티
   - gRPC, JSON-RPC, HTTP+JSON 전송 프로토콜 지원
   - `send_query`(텍스트), `send_data`(JSON DataPart) 메서드
   - 스트리밍 이벤트 텍스트 병합 및 중복 제거
   - `send_data_merged`: DataPart 자동 병합 (smart/last/append 모드)
 
-- **a2a_lg_embedded_server_manager.py** (166줄): 임베디드 A2A 서버 매니저
+- **a2a_lg_embedded_server_manager.py** (165줄): 임베디드 A2A 서버 매니저
   - 자동 포트 확보 및 서버 기동
   - 헬스체크 엔드포인트 (/health)
   - 비동기 컨텍스트 매니저 패턴
   - 서버 생명주기 관리 (시작/대기/종료)
 
-- **a2a_lg_utils.py** (193줄): A2A 서버 빌드 헬퍼
+- **a2a_lg_utils.py** (331줄): A2A 서버 빌드 헬퍼
   - `create_agent_card`: AgentCard 생성 (스킬, 전송 프로토콜, 능력 설정)
   - `_build_request_handler`: DefaultRequestHandler 구성
   - Push Notification egress allowlist 및 HMAC 서명
@@ -42,7 +42,7 @@ LangGraph 그래프를 A2A 프로토콜 서버/클라이언트로 감싸고 실�
   - `to_a2a_starlette_server`: Starlette 앱 빌더
   - `to_a2a_run_uvicorn`: uvicorn 실행 헬퍼
 
-- **redis_task_store.py** (73줄): Redis 기반 TaskStore 구현
+- **redis_task_store.py** (110줄): Redis 기반 TaskStore 구현
   - A2A TaskStore 인터페이스 영속화
   - TTL 설정 지원 (A2A_TASK_TTL_SECONDS)
   - 분산 환경 Task 상태 공유
@@ -67,6 +67,14 @@ LangGraph 그래프를 A2A 프로토콜 서버/클라이언트로 감싸고 실�
 - `A2A_TASK_TTL_SECONDS`: Task TTL (초, 0이면 무제한)
 
 ## 버전 히스토리
+
+### 0.3.22 (2025-12-25)
+- ✅ 하위 호환성 완전 유지
+- 🆕 gRPC 전송 프로토콜 지원 강화
+- 🆕 클라이언트 유틸리티 기능 확장
+- 🆕 서버 빌드 헬퍼 기능 대폭 확장
+- 🆕 Redis TaskStore 기능 강화
+- 📚 성능 최적화 및 안정성 개선
 
 ### 0.3.11 (2025-11-11)
 - ✅ 하위 호환성 완전 유지

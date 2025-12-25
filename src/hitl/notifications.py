@@ -1,5 +1,17 @@
-"""
-HITL 알림 서비스
+"""HITL 알림 서비스 모듈.
+
+이 모듈은 HITL 승인 요청에 대한 다중 채널 알림 시스템을 제공합니다.
+
+주요 기능:
+    - 추상 알림 채널 인터페이스 (NotificationChannel)
+    - 이메일, Slack, 웹 푸시 등 다양한 채널 구현체
+    - 우선순위 기반 채널 라우팅
+    - 병렬 알림 전송
+
+Example:
+    >>> service = NotificationService()
+    >>> await service.initialize()
+    >>> await service.send_approval_notification(approval_request)
 """
 
 import asyncio
@@ -17,16 +29,44 @@ logger = logging.getLogger(__name__)
 
 
 class NotificationChannel(ABC):
-    """알림 채널 인터페이스"""
+    """알림 채널 추상 인터페이스.
+
+    HITL 승인 요청을 다양한 채널(이메일, Slack, 웹 푸시 등)로
+    전달하기 위한 공통 인터페이스를 정의합니다.
+
+    Subclasses:
+        EmailNotificationChannel: SMTP 기반 이메일 알림
+        SlackNotificationChannel: Slack 웹훅 기반 알림
+        WebPushNotificationChannel: 웹 푸시 알림 (미구현)
+    """
 
     @abstractmethod
     async def send(self, request: ApprovalRequest) -> bool:
-        """알림 전송"""
+        """승인 요청 알림을 전송합니다.
+
+        Args:
+            request: 전송할 승인 요청 객체.
+
+        Returns:
+            전송 성공 여부.
+        """
         pass
 
-# 구현체 샘플
+
 class EmailNotificationChannel(NotificationChannel):
-    """이메일 알림 채널"""
+    """SMTP 기반 이메일 알림 채널.
+
+    SMTP 서버를 통해 승인 요청 알림 이메일을 전송합니다.
+    TLS 암호화를 지원하며, 비동기 처리를 위해 스레드 풀을 사용합니다.
+
+    Attributes:
+        smtp_host: SMTP 서버 호스트.
+        smtp_port: SMTP 서버 포트.
+        username: SMTP 인증 사용자명.
+        password: SMTP 인증 비밀번호.
+        from_email: 발신자 이메일 주소.
+        to_emails: 수신자 이메일 주소 목록.
+    """
 
     def __init__(
         self,
@@ -36,7 +76,17 @@ class EmailNotificationChannel(NotificationChannel):
         password: str,
         from_email: str,
         to_emails: List[str],
-    ):
+    ) -> None:
+        """EmailNotificationChannel 인스턴스를 초기화합니다.
+
+        Args:
+            smtp_host: SMTP 서버 호스트.
+            smtp_port: SMTP 서버 포트 (기본: 587).
+            username: SMTP 인증 사용자명.
+            password: SMTP 인증 비밀번호.
+            from_email: 발신자 이메일 주소.
+            to_emails: 수신자 이메일 주소 목록.
+        """
         self.smtp_host = smtp_host
         self.smtp_port = smtp_port
         self.username = username
@@ -84,23 +134,44 @@ class EmailNotificationChannel(NotificationChannel):
             logger.error(f"이메일 전송 실패: {e}")
             return False
 
-    def _send_email(self, msg):
+    def _send_email(self, msg: MIMEMultipart) -> None:
         """동기 이메일 전송"""
         with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
             server.starttls()
             server.login(self.username, self.password)
             server.send_message(msg)
 
-# 구현체 샘플
 class SlackNotificationChannel(NotificationChannel):
-    """Slack 알림 채널"""
+    """Slack 웹훅 기반 알림 채널.
 
-    def __init__(self, webhook_url: str, channel: Optional[str] = None):
+    Slack Incoming Webhook을 통해 승인 요청 알림을 전송합니다.
+    Block Kit 형식의 리치 메시지를 지원하며, 우선순위에 따른 이모지 표시와
+    승인 페이지 링크 버튼을 포함합니다.
+
+    Attributes:
+        webhook_url: Slack Incoming Webhook URL.
+        channel: 대상 채널 (선택적, 웹훅 기본 채널 사용).
+    """
+
+    def __init__(self, webhook_url: str, channel: Optional[str] = None) -> None:
+        """SlackNotificationChannel 인스턴스를 초기화합니다.
+
+        Args:
+            webhook_url: Slack Incoming Webhook URL.
+            channel: 대상 채널. None이면 웹훅 기본 채널 사용.
+        """
         self.webhook_url = webhook_url
         self.channel = channel
 
     async def send(self, request: ApprovalRequest) -> bool:
-        """Slack 알림 전송"""
+        """Slack으로 승인 요청 알림을 전송합니다.
+
+        Args:
+            request: 전송할 승인 요청 객체.
+
+        Returns:
+            전송 성공 여부 (HTTP 200 응답 시 True).
+        """
         try:
             # 메시지 구성
             priority_emoji = {
@@ -185,31 +256,81 @@ class SlackNotificationChannel(NotificationChannel):
             logger.error(f"Slack 알림 전송 오류: {e}")
             return False
 
-# 구현체 샘플
 class WebPushNotificationChannel(NotificationChannel):
-    """웹 푸시 알림 채널"""
+    """웹 푸시 알림 채널 (구현 예정).
 
-    def __init__(self, vapid_private_key: str, vapid_claims: Dict[str, str]):
+    VAPID 프로토콜을 사용하여 웹 브라우저에 푸시 알림을 전송합니다.
+    pywebpush 라이브러리를 통해 구현 예정입니다.
+
+    Attributes:
+        vapid_private_key: VAPID 개인 키.
+        vapid_claims: VAPID 클레임 (sub, exp 등).
+        subscriptions: 구독자 정보 목록.
+
+    Note:
+        현재 미구현 상태이며, send() 메서드는 항상 True를 반환합니다.
+    """
+
+    def __init__(self, vapid_private_key: str, vapid_claims: Dict[str, str]) -> None:
+        """WebPushNotificationChannel 인스턴스를 초기화합니다.
+
+        Args:
+            vapid_private_key: VAPID 개인 키.
+            vapid_claims: VAPID 클레임 딕셔너리.
+        """
         self.vapid_private_key = vapid_private_key
         self.vapid_claims = vapid_claims
         self.subscriptions: List[Dict[str, Any]] = []
 
     async def send(self, request: ApprovalRequest) -> bool:
-        """웹 푸시 알림 전송"""
+        """웹 푸시 알림을 전송합니다 (미구현).
+
+        Args:
+            request: 전송할 승인 요청 객체.
+
+        Returns:
+            항상 True (미구현).
+        """
         # 구현 예정 (pywebpush 라이브러리 사용)
         logger.info(f"웹 푸시 알림 (미구현): {request.request_id}")
         return True
 
 
 class NotificationService:
-    """통합 알림 서비스"""
+    """다중 채널 통합 알림 서비스.
 
-    def __init__(self):
+    여러 알림 채널(이메일, Slack, 웹 푸시 등)을 등록하고 관리하며,
+    승인 요청 발생 시 우선순위에 따라 적절한 채널로 알림을 전송합니다.
+
+    Attributes:
+        channels: 등록된 알림 채널 딕셔너리 (이름 -> 채널).
+
+    Example:
+        >>> service = NotificationService()
+        >>> await service.initialize()  # 환경변수에서 채널 설정 로드
+        >>> service.register_channel("custom", CustomChannel())
+        >>> await service.send_approval_notification(request)
+    """
+
+    def __init__(self) -> None:
+        """NotificationService 인스턴스를 초기화합니다."""
         self.channels: Dict[str, NotificationChannel] = {}
         self._initialized = False
 
-    async def initialize(self):
-        """알림 서비스 초기화"""
+    async def initialize(self) -> None:
+        """알림 서비스를 초기화합니다.
+
+        환경변수에서 알림 채널 설정을 로드하고 활성화합니다.
+
+        환경변수:
+            SLACK_WEBHOOK_URL: Slack 웹훅 URL (설정 시 Slack 채널 활성화)
+            SMTP_HOST: SMTP 서버 호스트 (설정 시 이메일 채널 활성화)
+            SMTP_PORT: SMTP 서버 포트 (기본: 587)
+            SMTP_USERNAME: SMTP 인증 사용자명
+            SMTP_PASSWORD: SMTP 인증 비밀번호
+            FROM_EMAIL: 발신자 이메일
+            TO_EMAILS: 수신자 이메일 (쉼표 구분)
+        """
         # 환경변수에서 설정 로드
         import os
 
@@ -235,21 +356,22 @@ class NotificationService:
         self._initialized = True
         logger.info(f"알림 서비스 초기화 완료: {len(self.channels)}개 채널")
 
-    async def shutdown(self):
+    async def shutdown(self) -> None:
         """서비스 종료"""
         self.channels.clear()
         self._initialized = False
 
-    async def send_approval_notification(self, request: ApprovalRequest):
+    async def send_approval_notification(self, request: ApprovalRequest) -> None:
         """모든 채널로 승인 알림 전송"""
         if not self._initialized:
             logger.warning("알림 서비스가 초기화되지 않았습니다")
             return
 
         # 우선순위별 채널 선택
+        channels_to_use: List[str]
         if request.priority == "critical":
             # 모든 채널로 전송
-            channels_to_use = self.channels.keys()
+            channels_to_use = list(self.channels.keys())
         elif request.priority == "high":
             # Slack과 이메일만
             channels_to_use = ["slack", "email"]
@@ -269,12 +391,12 @@ class NotificationService:
             success_count = sum(1 for r in results if r is True)
             logger.info(f"알림 전송 완료: {success_count}/{len(tasks)} 채널")
 
-    def register_channel(self, name: str, channel: NotificationChannel):
+    def register_channel(self, name: str, channel: NotificationChannel) -> None:
         """알림 채널 등록"""
         self.channels[name] = channel
         logger.info(f"알림 채널 등록: {name}")
 
-    def unregister_channel(self, name: str):
+    def unregister_channel(self, name: str) -> None:
         """알림 채널 제거"""
         if name in self.channels:
             del self.channels[name]

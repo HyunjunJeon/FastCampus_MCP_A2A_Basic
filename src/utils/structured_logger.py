@@ -20,8 +20,8 @@ import traceback
 from contextlib import contextmanager
 from functools import wraps
 
-# 환경 변수 가져오기
-from src.utils.env_validator import get_optional_env
+# 환경 변수 가져오기 - 순환 임포트 방지를 위해 직접 사용
+import os
 
 
 class StructuredFormatter(logging.Formatter):
@@ -182,9 +182,9 @@ class StructuredLogger:
     def setup_logging(self):
         """로깅 시스템 설정"""
         # 환경 변수에서 설정 읽기
-        log_level = get_optional_env("LOG_LEVEL", "INFO").upper()
-        log_format = get_optional_env("LOG_FORMAT", "json")  # json 또는 text
-        log_file = get_optional_env("LOG_FILE", None)
+        log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+        log_format = os.getenv("LOG_FORMAT", "json")  # json 또는 text
+        log_file = os.getenv("LOG_FILE", None)
 
         # 루트 로거 설정
         root_logger = logging.getLogger()
@@ -448,7 +448,7 @@ def get_logger(name: str) -> ContextLogger:
         ContextLogger 인스턴스
     """
     # 환경에서 설정 확인
-    env = get_optional_env("ENV", "development")
+    env = os.getenv("ENV", "development")
 
     # 환경별 기본 컨텍스트
     context = {"environment": env, "service": "fc_mcp_a2a"}

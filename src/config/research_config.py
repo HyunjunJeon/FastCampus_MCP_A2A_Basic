@@ -66,11 +66,17 @@ class ResearchConfig(BaseModel):
         default=5, description="ReAct 도구 호출 최대 횟수"
     )
     supervisor_research_grace_seconds: float = Field(
-        default=0.0, description="Supervisor가 병렬 연구 실행 후 진행 전 대기할 유예 시간(초)"
+        default=0.0,
+        description="Supervisor가 병렬 연구 실행 후 진행 전 대기할 유예 시간(초)",
     )
     supervisor_force_conduct_research_enabled: bool = Field(
         default_factory=lambda: (
-            (get_optional_env("SUPERVISOR_FORCE_CONDUCT_RESEARCH_ENABLED", "true") or "true").strip().lower()
+            (
+                get_optional_env("SUPERVISOR_FORCE_CONDUCT_RESEARCH_ENABLED", "true")
+                or "true"
+            )
+            .strip()
+            .lower()
             in {"1", "true", "yes", "y"}
         ),
         description=(
@@ -78,13 +84,17 @@ class ResearchConfig(BaseModel):
         ),
     )
     supervisor_force_conduct_research_until_iteration: int = Field(
-        default_factory=lambda: int(get_optional_env("SUPERVISOR_FORCE_CONDUCT_RESEARCH_UNTIL", "1")),
+        default_factory=lambda: int(
+            get_optional_env("SUPERVISOR_FORCE_CONDUCT_RESEARCH_UNTIL", "1")
+        ),
         description=(
             "Supervisor 강제 ConductResearch 적용 임계 반복 수 (research_iterations <= 임계에서만 적용)"
         ),
     )
     researcher_min_iterations_before_compress: int = Field(
-        default_factory=lambda: int(get_optional_env("RESEARCHER_MIN_ITERATIONS_BEFORE_COMPRESS", "1")),
+        default_factory=lambda: int(
+            get_optional_env("RESEARCHER_MIN_ITERATIONS_BEFORE_COMPRESS", "1")
+        ),
         description=(
             "Researcher 단계에서 첫 응답에 tool_calls가 없을 때, 최소 몇 번 researcher 루프를 더 돌지 설정"
         ),
@@ -100,13 +110,14 @@ class ResearchConfig(BaseModel):
         description="연구용 메인 모델",
     )
     compression_model: str = Field(
-        default_factory=lambda: get_optional_env("COMPRESSION_MODEL", "gpt-4o-2024-11-20"),
+        default_factory=lambda: get_optional_env(
+            "COMPRESSION_MODEL", "gpt-4o-2024-11-20"
+        ),
         description="압축용 경량 모델",
     )
     final_report_model: str = Field(
         default_factory=lambda: get_optional_env(
-            "FINAL_REPORT_MODEL", 
-            get_optional_env("MODEL_NAME", "gpt-4.1")
+            "FINAL_REPORT_MODEL", get_optional_env("MODEL_NAME", "gpt-4.1")
         ),
         description="최종 보고서용 모델",
     )

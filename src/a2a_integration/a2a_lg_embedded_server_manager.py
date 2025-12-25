@@ -1,5 +1,22 @@
-"""
-내장 A2A 서버 매니저
+"""내장 A2A 서버 매니저 모듈.
+
+LangGraph CompiledStateGraph를 A2A 프로토콜 호환 서버로 래핑하여
+임베디드 모드로 실행하는 기능을 제공합니다.
+
+주요 기능:
+    - 비동기 컨텍스트 매니저로 A2A 서버 수명주기 관리
+    - 자동 포트 검색 및 헬스체크
+    - Uvicorn 기반 ASGI 서버 실행
+    - 안전한 서버 종료 및 리소스 정리
+
+Example:
+    >>> from langgraph.graph.state import CompiledStateGraph
+    >>> async with start_embedded_graph_server(
+    ...     graph=my_graph,
+    ...     agent_card=my_card,
+    ...     port=8080
+    ... ) as server_info:
+    ...     print(f"Server running at {server_info['base_url']}")
 """
 
 import asyncio
@@ -18,11 +35,33 @@ logger = get_logger(__name__)
 
 
 class EmbeddedA2AServerManager:
-    def __init__(self):
+    """내장 A2A 서버 수명주기 매니저.
+
+    LangGraph 그래프를 A2A 서버로 래핑하여 실행하고,
+    비동기 컨텍스트 매니저를 통해 안전하게 수명주기를 관리합니다.
+
+    Attributes:
+        servers: 실행 중인 서버 정보를 저장하는 딕셔너리.
+        running_tasks: 실행 중인 asyncio 태스크를 추적하는 딕셔너리.
+    """
+
+    def __init__(self) -> None:
+        """EmbeddedA2AServerManager 인스턴스를 초기화합니다."""
         self.servers: dict[str, dict[str, Any]] = {}
-        self.running_tasks: dict[str, asyncio.Task] = {}
+        self.running_tasks: dict[str, asyncio.Task[None]] = {}
 
     def _find_free_port(self, start_port: int = 8080) -> int:
+        """사용 가능한 빈 포트를 검색합니다.
+
+        Args:
+            start_port: 검색을 시작할 포트 번호.
+
+        Returns:
+            사용 가능한 포트 번호.
+
+        Raises:
+            RuntimeError: 1000개 포트 범위 내에서 사용 가능한 포트를 찾지 못한 경우.
+        """
         for port in range(start_port, start_port + 1000):
             try:
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -41,6 +80,27 @@ class EmbeddedA2AServerManager:
         host: str = "localhost",
         port: int | None = None,
     ):
+        """LangGraph 그래프를 A2A 서버로 시작합니다.
+
+        비동기 컨텍스트 매니저로 사용하여 서버 수명주기를 자동 관리합니다.
+        서버는 /health 엔드포인트와 A2A 표준 엔드포인트를 제공합니다.
+
+        Args:
+            graph: 래핑할 LangGraph CompiledStateGraph 인스턴스.
+            agent_card: A2A 에이전트 메타데이터 (이름, 설명, 스킬 등).
+            host: 바인딩할 호스트 주소 (기본값: "localhost").
+            port: 바인딩할 포트 번호 (None이면 자동 검색).
+
+        Yields:
+            서버 정보 딕셔너리:
+                - host: 바인딩된 호스트 주소
+                - port: 바인딩된 포트 번호
+                - base_url: 서버 기본 URL
+
+        Raises:
+            TimeoutError: 서버가 10초 내에 시작되지 않은 경우.
+            Exception: 서버 시작 또는 실행 중 오류 발생 시.
+        """
         if port is None:
             port = self._find_free_port()
         server_key = f"graph:{agent_card.name}:{agent_card.url}"
@@ -112,7 +172,18 @@ class EmbeddedA2AServerManager:
         finally:
             await self._stop_server(server_key)
 
-    async def _wait_for_server_ready(self, host: str, port: int, timeout: int = 10):
+    async def _wait_for_server_ready(self, host: str, port: int, timeout: int = 10) -> None:
+        """서버가 준비될 때까지 헬스체크를 수행합니다.
+
+        Args:
+            host: 서버 호스트 주소.
+            port: 서버 포트 번호.
+            timeout: 최대 대기 시간 (초).
+
+        Raises:
+            TimeoutError: 지정된 시간 내에 서버가 응답하지 않은 경우.
+            asyncio.CancelledError: 대기 중 취소된 경우.
+        """
         from src.utils.http_client import http_client
         start_time = time.time()
         while time.time() - start_time < timeout:
@@ -129,7 +200,12 @@ class EmbeddedA2AServerManager:
                 await asyncio.sleep(0.5)
         raise TimeoutError("서버가 제한 시간 내에 시작되지 않았습니다")
 
-    async def _stop_server(self, server_key: str):
+    async def _stop_server(self, server_key: str) -> None:
+        """서버를 안전하게 종료하고 리소스를 정리합니다.
+
+        Args:
+            server_key: 종료할 서버의 고유 키.
+        """
         if server_key in self.servers:
             server_info = self.servers[server_key]
             logger.info("🔻 서버 중지 중...")
@@ -158,6 +234,29 @@ async def start_embedded_graph_server(
     host: str = "0.0.0.0",
     port: int = 8000,
 ):
+    """LangGraph 그래프를 임베디드 A2A 서버로 실행하는 컨텍스트 매니저.
+
+    일회성 서버 실행에 최적화된 편의 함수입니다.
+    내부적으로 EmbeddedA2AServerManager를 생성하고 관리합니다.
+
+    Args:
+        graph: 래핑할 LangGraph CompiledStateGraph 인스턴스.
+        agent_card: A2A 에이전트 메타데이터.
+        host: 바인딩할 호스트 주소 (기본값: "0.0.0.0").
+        port: 바인딩할 포트 번호 (기본값: 8000).
+
+    Yields:
+        서버 정보 딕셔너리 (host, port, base_url 포함).
+
+    Example:
+        >>> async with start_embedded_graph_server(
+        ...     graph=compiled_graph,
+        ...     agent_card=card,
+        ...     port=8090
+        ... ) as info:
+        ...     async with A2AClientManager(info["base_url"]) as client:
+        ...         result = await client.send_query("Hello")
+    """
     manager = EmbeddedA2AServerManager()
     async with manager.start_graph_server(graph=graph, agent_card=agent_card, port=port, host=host) as server_info:
         yield server_info

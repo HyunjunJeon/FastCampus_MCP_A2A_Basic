@@ -54,29 +54,31 @@ logger = get_logger(__name__)
 async def run_langgraph_deep_research(query: str):
     """LangGraph 딥리서치 구현체 실행 (복잡한 State 관리)"""
     print("\n" + "=" * 80)
-    print("🔴 LangGraph 딥리서치 구현체 실행")
+    print("[INFO] LangGraph 딥리서치 구현체 실행")
     print("=" * 80)
 
     start_time = datetime.now()
 
     try:
-        print("📥 LangGraph 딥리서치 에이전트 임포트 중...")
+        print("[INFO] LangGraph 딥리서치 에이전트 임포트 중...")
         # LangGraph 기반 딥리서치 에이전트 (복잡한 State 관리)
         from src.lg_agents.deep_research.deep_research_agent import deep_research_graph
         from langchain_core.messages import HumanMessage
 
-        print(f"📝 딥리서치 쿼리 실행: {query}")
-        print("🔄 LangGraph 복잡한 State 관리로 실행 중...")
+        print(f"[INFO] 딥리서치 쿼리 실행: {query}")
+        print("[INFO] LangGraph 복잡한 State 관리로 실행 중...")
 
         # 실제 LangGraph 딥리서치 실행
-        result = await deep_research_graph.ainvoke({"messages": [HumanMessage(content=query)]})
+        result = await deep_research_graph.ainvoke(
+            {"messages": [HumanMessage(content=query)]}
+        )
 
         end_time = datetime.now()
         execution_time = (end_time - start_time).total_seconds()
 
-        print("✅ LangGraph 딥리서치 실행 완료!")
-        print(f"⏱️  실행 시간: {execution_time:.2f}초")
-        print(f"📄 결과 길이: {len(str(result))} 문자")
+        print("[SUCCESS] LangGraph 딥리서치 실행 완료!")
+        print(f"[INFO] 실행 시간: {execution_time:.2f}초")
+        print(f"[INFO] 결과 길이: {len(str(result))} 문자")
 
         return {
             "success": True,
@@ -95,11 +97,11 @@ async def run_langgraph_deep_research(query: str):
 
     except Exception as e:
         error_msg = f"LangGraph 딥리서치 실행 실패: {e}"
-        print(f"❌ {error_msg}")
+        print(f"[ERROR] {error_msg}")
 
         import traceback
 
-        print("🔍 에러 상세:")
+        print("[INFO] 에러 상세:")
         print(traceback.format_exc())
 
         end_time = datetime.now()
@@ -127,7 +129,7 @@ async def run_a2a_deep_research(
       (Step 3 기본 비교에는 False 유지, Step 4에서 True로 활용)
     """
     print("\n" + "=" * 80)
-    print("🔵 A2A 딥리서치 구현체 실행")
+    print("[INFO] A2A 딥리서치 구현체 실행")
     print("=" * 80)
 
     start_time = datetime.now()
@@ -138,27 +140,32 @@ async def run_a2a_deep_research(
         # 외부에서 엔드포인트가 주어지면 그대로 사용 (이미 띄워진 서버)
         if endpoints and isinstance(endpoints, dict) and endpoints.get("deep_research"):
             base_url = endpoints["deep_research"]
-            logger.info(f"🔗 외부 제공 A2A 엔드포인트 사용(DeepResearchA2AGraph): {base_url}")
-            
+            logger.info(
+                f"[INFO] 외부 제공 A2A 엔드포인트 사용(DeepResearchA2AGraph): {base_url}"
+            )
+
             graph_input = {
                 "messages": [
                     {"role": "human", "content": query},
                 ],
             }
-            
-            logger.info(f"DeepResearchGraph 스펙에 맞는 데이터 Input 을 위해 전처리: {graph_input}")
+
+            logger.info(
+                f"DeepResearchGraph 스펙에 맞는 데이터 Input 을 위해 전처리: {graph_input}"
+            )
             async with A2AClientManager(base_url=base_url) as client:
                 merged = await client.send_data_merged(graph_input)
 
         end_time = datetime.now()
         execution_time = (end_time - start_time).total_seconds()
 
-        
         final_report_text = ""
         try:
             if isinstance(merged, dict):
                 # 구조화 결과에서 우선적으로 final_report를 찾는다
-                final_report_text = str(merged.get("final_report") or merged.get("text") or "")
+                final_report_text = str(
+                    merged.get("final_report") or merged.get("text") or ""
+                )
             else:
                 final_report_text = str(merged)
         except Exception:
@@ -211,10 +218,10 @@ async def run_a2a_deep_research(
                 # HITL 환경이 준비되지 않은 경우에도 비교 실험은 계속
                 result["approval_error"] = f"HITL 처리 실패: {e}"
 
-        print("✅ A2A 딥리서치 실행 완료!")
-        print(f"⏱️  실행 시간: {execution_time:.2f}초")
-        print(f"📄 결과 길이: {len(str(result))} 문자")
-        print("🏗️ Context 복잡성: 낮음 (평면적 구조)")
+        print("[SUCCESS] A2A 딥리서치 실행 완료!")
+        print(f"[INFO] 실행 시간: {execution_time:.2f}초")
+        print(f"[INFO] 결과 길이: {len(str(result))} 문자")
+        print("[INFO] Context 복잡성: 낮음 (평면적 구조)")
 
         return {
             "success": True,
@@ -226,11 +233,11 @@ async def run_a2a_deep_research(
 
     except Exception as e:
         error_msg = f"A2A 딥리서치 실행 실패: {e}"
-        print(f"❌ {error_msg}")
+        print(f"[ERROR] {error_msg}")
 
         import traceback
 
-        print("🔍 에러 상세:")
+        print("[INFO] 에러 상세:")
         print(traceback.format_exc())
 
         end_time = datetime.now()
@@ -242,6 +249,7 @@ async def run_a2a_deep_research(
             "execution_time": execution_time,
             "system_type": "A2A 딥리서치",
         }
+
 
 async def check_servers_basic():
     """기본 서버 상태 체크 (MCP + 기본 A2A Supervisor 포트)"""
@@ -260,43 +268,48 @@ async def check_servers_basic():
 
             if result == 0:
                 mcp_running.append(port)
-                print(f"✅ MCP 서버 포트 {port}: 실행 중")
+                print(f"[SUCCESS] MCP 서버 포트 {port}: 실행 중")
             else:
-                print(f"❌ MCP 서버 포트 {port}: 실행 안됨")
+                print(f"[ERROR] MCP 서버 포트 {port}: 실행 안됨")
         except Exception:
-            print(f"❌ MCP 서버 포트 {port}: 연결 실패")
-
+            print(f"[ERROR] MCP 서버 포트 {port}: 연결 실패")
 
     # A2A Supervisor 기본 포트(8090) 헬스체크
     a2a_healthy = False
     try:
         import httpx
+
         async with httpx.AsyncClient() as client:
             resp = await client.get("http://localhost:8090/health", timeout=1.5)
             a2a_healthy = resp.status_code == 200
     except Exception:
         a2a_healthy = False
 
-    print("\n📊 체크 결과:")
+    print("\n[INFO] 체크 결과:")
     print(f"   MCP 서버: {len(mcp_running)}/{len(mcp_ports)} 개 실행 중")
     print(f"   A2A Supervisor(8090): {'정상' if a2a_healthy else '비정상/미실행'}")
 
     return {"mcp_servers": mcp_running, "a2a_server": a2a_healthy}
 
 
-async def run_comparison(query: str, endpoints: dict[str, str] | None = None, langgraph_run: bool = True, a2a_run: bool = True):
+async def run_comparison(
+    query: str,
+    endpoints: dict[str, str] | None = None,
+    langgraph_run: bool = True,
+    a2a_run: bool = True,
+):
     """LangGraph 딥리서치 vs A2A 딥리서치 구현체 비교"""
 
-    print("🎯 LangGraph 딥리서치 vs A2A 딥리서치 구현체 비교")
+    print("[INFO] LangGraph 딥리서치 vs A2A 딥리서치 구현체 비교")
     print("=" * 80)
-    print(f"📋 연구 주제: {query}")
-    print(f"🕐 시작 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"[INFO] 연구 주제: {query}")
+    print(f"[INFO] 시작 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 80)
 
-    print("📝 비교 대상:")
-    print("   🔴 LangGraph 딥리서치: StateGraph로 상태 관리, 중앙 집중식")
-    print("   🔵 A2A 딥리서치: Context로 상태 전달, 분산식")
-    print("   🤝 공통점: 동일한 프롬프트 사용, 동일한 논리 흐름")
+    print("[INFO] 비교 대상:")
+    print("   [INFO] LangGraph 딥리서치: StateGraph로 상태 관리, 중앙 집중식")
+    print("   [INFO] A2A 딥리서치: Context로 상태 전달, 분산식")
+    print("   [INFO] 공통점: 동일한 프롬프트 사용, 동일한 논리 흐름")
     print()
 
     # 서버 상태 사전 체크
@@ -305,13 +318,13 @@ async def run_comparison(query: str, endpoints: dict[str, str] | None = None, la
 
     # MCP 서버가 실행 중이지 않으면 경고
     if not server_status["mcp_servers"]:
-        print("⚠️  경고: MCP 서버가 실행되지 않았습니다.")
+        print("[WARNING]  경고: MCP 서버가 실행되지 않았습니다.")
         print("   MCP 서버 실행: docker-compose -f docker-compose.mcp.yml up")
         print()
 
     # 전체 실험 시작 시간
     total_start = datetime.now()
-    
+
     if langgraph_run:
         # 1. LangGraph 딥리서치 실행
         langgraph_result = await run_langgraph_deep_research(query)
@@ -328,7 +341,7 @@ async def run_comparison(query: str, endpoints: dict[str, str] | None = None, la
 
     # 결과 비교 출력
     print("\n" + "=" * 80)
-    print("📊 실행 결과 비교")
+    print("[INFO] 실행 결과 비교")
     print("=" * 80)
 
     print(f"🕐 전체 실험 시간: {total_time:.2f}초")
@@ -336,31 +349,35 @@ async def run_comparison(query: str, endpoints: dict[str, str] | None = None, la
 
     # LangGraph 딥리서치 결과
     if langgraph_run:
-        print("🔴 LangGraph 딥리서치:")
+        print("[INFO] LangGraph 딥리서치:")
         if langgraph_result.get("success", False):
-            print("   ✅ 성공")
-            print(f"   ⏱️  실행시간: {langgraph_result['execution_time']:.2f}초")
-            print(f"   🏗️  아키텍처: {langgraph_result['architecture']}")
+            print("   [SUCCESS] 성공")
+            print(f"   [INFO] 실행시간: {langgraph_result['execution_time']:.2f}초")
+            print(f"   [INFO] 아키텍처: {langgraph_result['architecture']}")
             print(
-                f"   📄 결과 크기: {len(langgraph_result['result'].get('final_report', ''))} 문자"
+                f"   [INFO] 결과 크기: {len(langgraph_result['result'].get('final_report', ''))} 문자"
             )
         else:
-            print(f"   ❌ 실패: {langgraph_result['error']}")
-            print(f"   ⏱️  실패까지 시간: {langgraph_result.get('execution_time', 0):.2f}초")
+            print(f"   [ERROR] 실패: {langgraph_result['error']}")
+            print(
+                f"   [INFO] 실패까지 시간: {langgraph_result.get('execution_time', 0):.2f}초"
+            )
 
     # A2A 딥리서치 결과
     if a2a_run:
-        print("\n🔵 A2A 딥리서치:")
+        print("\n[INFO] A2A 딥리서치:")
         if a2a_result.get("success", False):
-            print("   ✅ 성공")
-            print(f"   ⏱️  실행시간: {a2a_result['execution_time']:.2f}초")
-            print(f"   🏗️  아키텍처: {a2a_result['architecture']}")
+            print("   [SUCCESS] 성공")
+            print(f"   [INFO] 실행시간: {a2a_result['execution_time']:.2f}초")
+            print(f"   [INFO] 아키텍처: {a2a_result['architecture']}")
             print(
-                f"   📄 결과 크기: {len(a2a_result['result'].get('final_report', ''))} 문자"
+                f"   [INFO] 결과 크기: {len(a2a_result['result'].get('final_report', ''))} 문자"
             )
         else:
-            print(f"   ❌ 실패: {a2a_result['error']}")
-            print(f"   ⏱️  실패까지 시간: {a2a_result.get('execution_time', 0):.2f}초")
+            print(f"   [ERROR] 실패: {a2a_result['error']}")
+            print(
+                f"   [INFO] 실패까지 시간: {a2a_result.get('execution_time', 0):.2f}초"
+            )
 
     # # 실패 원인 분석
     # if langgraph_run or a2a_run:
@@ -397,8 +414,8 @@ async def run_comparison(query: str, endpoints: dict[str, str] | None = None, la
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(comparison_result, f, ensure_ascii=False, indent=2)
 
-    print(f"\n💾 상세 결과가 {output_path}에 저장되었습니다.")
-    print(f"🏁 실험 완료: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"\n[INFO] 상세 결과가 {output_path}에 저장되었습니다.")
+    print(f"[SUCCESS] 실험 완료: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
     # 호출자에서 경로를 알 수 있도록 반환 데이터에 포함
     comparison_result["output_path"] = str(output_path)

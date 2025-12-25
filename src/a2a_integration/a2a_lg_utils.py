@@ -142,7 +142,7 @@ def _build_request_handler(
             from .redis_task_store import RedisTaskStore
             redis_url = os.getenv("A2A_TASK_REDIS_URL", "redis://localhost:6379/0")
             ttl = int(os.getenv("A2A_TASK_TTL_SECONDS", "0") or "0")
-            task_store = RedisTaskStore(redis_url=redis_url, ttl_seconds=ttl)
+            task_store = RedisTaskStore(redis_url=redis_url, ttl_seconds=ttl)  # type: ignore[assignment]
     except Exception:
         pass
 
@@ -160,7 +160,7 @@ def _build_request_handler(
     if request_context_builder is not None:
         handler_kwargs["request_context_builder"] = request_context_builder
     
-    return DefaultRequestHandler(**handler_kwargs)
+    return DefaultRequestHandler(**handler_kwargs)  # type: ignore[arg-type]
 
 def _build_a2a_application(
     agent_card: AgentCard,
@@ -198,7 +198,7 @@ def _build_a2a_application(
     if extended_card_modifier is not None:
         app_kwargs["extended_card_modifier"] = extended_card_modifier
     
-    return A2AStarletteApplication(**app_kwargs)
+    return A2AStarletteApplication(**app_kwargs)  # type: ignore[arg-type]
 
 def create_agent_card(
     *,

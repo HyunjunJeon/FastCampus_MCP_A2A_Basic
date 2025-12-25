@@ -34,35 +34,43 @@ class WebhookEventStorage:
     def _key(self, task_id: str) -> str:
         return f"a2a:webhook:task:{task_id}"
 
+    def _get_redis(self) -> redis.Redis[bytes]:
+        """연결된 Redis 클라이언트를 반환합니다."""
+        if self._redis is None:
+            raise RuntimeError("Redis not connected. Call connect() first.")
+        return self._redis
+
     async def add_event(self, task_id: str, payload: Any) -> None:
         if self._redis is None:
             await self.connect()
+        r = self._get_redis()
         key = self._key(task_id)
         try:
             data = json.dumps(payload, ensure_ascii=False)
         except Exception:
             data = json.dumps({"raw": str(payload)})
-        await self._redis.rpush(key, data)
-        await self._redis.expire(key, self.ttl_seconds)
+        await r.rpush(key, data)
+        await r.expire(key, self.ttl_seconds)
 
     async def get_events(self, task_id: str, limit: int = 100) -> List[Any]:
         if self._redis is None:
             await self.connect()
+        r = self._get_redis()
         key = self._key(task_id)
-        total = await self._redis.llen(key)
+        total = await r.llen(key)
         if total is None or total == 0:
             return []
         start = max(0, int(total) - int(limit))
-        rows = await self._redis.lrange(key, start, -1)
+        rows = await r.lrange(key, start, -1)
         results: List[Any] = []
-        for r in rows:
+        for row in rows:
             try:
-                if isinstance(r, (bytes, bytearray)):
-                    results.append(json.loads(r.decode("utf-8")))
+                if isinstance(row, (bytes, bytearray)):
+                    results.append(json.loads(row.decode("utf-8")))
                 else:
-                    results.append(json.loads(str(r)))
+                    results.append(json.loads(str(row)))
             except Exception:
-                results.append({"raw": r.decode("utf-8") if isinstance(r, (bytes, bytearray)) else str(r)})
+                results.append({"raw": row.decode("utf-8") if isinstance(row, (bytes, bytearray)) else str(row)})
         return results
 
 

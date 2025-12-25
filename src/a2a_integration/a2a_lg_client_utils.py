@@ -23,7 +23,7 @@ from src.utils.http_client import http_client
 logger = get_logger(__name__)
 
 # Deep Research 등 장시간 작업을 위한 기본 타임아웃 (초)
-DEFAULT_A2A_TIMEOUT = 600.0  # 10분
+DEFAULT_A2A_TIMEOUT = 900.0  # 15분 (Step 4 HITL 데모 스트리밍 타임아웃 방지)
 
 
 class A2AClientManager:
@@ -124,7 +124,7 @@ class A2AClientManager:
             컨텍스트 매니저 (async with)를 사용하면 자동으로 호출됩니다.
         """
         # 장시간 작업을 위한 타임아웃 설정된 httpx 클라이언트 생성
-        self._httpx_client = httpx.AsyncClient(
+        self._httpx_client = httpx.AsyncClient(  # type: ignore[assignment]
             timeout=httpx.Timeout(
                 connect=10.0,  # 연결 타임아웃
                 read=self.timeout,  # 읽기 타임아웃 (Deep Research 등 장시간 작업용)
@@ -136,10 +136,10 @@ class A2AClientManager:
 
         # Agent Card 조회
         resolver = A2ACardResolver(
-            httpx_client=self._httpx_client,
+            httpx_client=self._httpx_client,  # type: ignore[arg-type]
             base_url=self.base_url,
         )
-        self.agent_card: AgentCard = await resolver.get_agent_card()
+        self.agent_card = await resolver.get_agent_card()
 
         # A2A SDK ClientConfig 구성 - httpx_client 포함
         config_kwargs = {
@@ -157,11 +157,11 @@ class A2AClientManager:
         if self.use_client_preference:
             config_kwargs["use_client_preference"] = self.use_client_preference
         if self.accepted_output_modes:
-            config_kwargs["accepted_output_modes"] = self.accepted_output_modes
+            config_kwargs["accepted_output_modes"] = self.accepted_output_modes  # type: ignore[assignment]
 
-        config = ClientConfig(**config_kwargs)
+        config = ClientConfig(**config_kwargs)  # type: ignore[arg-type]
         factory = ClientFactory(config=config)
-        self.client = factory.create(card=self.agent_card)
+        self.client = factory.create(card=self.agent_card)  # type: ignore[assignment]
 
         logger.info(f"A2A 클라이언트 초기화 완료 (timeout={self.timeout}s): {self.base_url}")
         return self
@@ -202,12 +202,17 @@ class A2AClientManager:
                 - default_input_modes: 기본 입력 모드
                 - default_output_modes: 기본 출력 모드
                 - skills: 스킬 목록 (name, description)
+
+        Raises:
+            RuntimeError: 초기화되지 않은 상태에서 호출 시.
         """
+        if self.agent_card is None:
+            raise RuntimeError("클라이언트가 초기화되지 않았습니다. initialize()를 먼저 호출하세요.")
         return {
             "name": self.agent_card.name,
             "description": self.agent_card.description,
             "url": self.agent_card.url,
-            "capabilities": self.agent_card.capabilities.model_dump(),
+            "capabilities": self.agent_card.capabilities.model_dump() if self.agent_card.capabilities else {},
             "default_input_modes": self.agent_card.default_input_modes,
             "default_output_modes": self.agent_card.default_output_modes,
             "skills": [
@@ -499,7 +504,7 @@ class A2AClientManager:
 
         return response_text.strip()
 
-    def _extract_text_from_event(self, event) -> str:
+    def _extract_text_from_event(self, event: object) -> str:
         if not isinstance(event, tuple) or len(event) < 1:
             return ""
         task = event[0]
@@ -508,7 +513,7 @@ class A2AClientManager:
                 if hasattr(artifact, "parts") and artifact.parts:
                     for part in artifact.parts:
                         if hasattr(part, "root") and hasattr(part.root, "text"):
-                            return part.root.text
+                            return str(part.root.text)
         elif hasattr(task, "history") and task.history:
             last_message = task.history[-1]
             if (
@@ -519,7 +524,7 @@ class A2AClientManager:
             ):
                 for part in last_message.parts:
                     if hasattr(part, "root") and hasattr(part.root, "text"):
-                        return part.root.text
+                        return str(part.root.text)
         return ""
 
     def _iter_texts_from_event(self, event):
@@ -663,15 +668,20 @@ class A2AClientManager:
 
 
 async def query_a2a_agent(
-    user_query: str, 
+    user_query: str,
     base_url: str = "http://localhost:8080",
 ) -> str:
+    """A2A 에이전트에 텍스트 질의를 전송합니다."""
     async with A2AClientManager(base_url=base_url) as manager:
-        return await manager.send_query(user_query)
+        result = await manager.send_query(user_query)
+        return result  # type: ignore[no-any-return]
+
 
 async def query_data_a2a_agent(
     data: dict[str, Any],
     base_url: str = "http://localhost:8080",
 ) -> dict[str, Any]:
+    """A2A 에이전트에 JSON 데이터를 전송합니다."""
     async with A2AClientManager(base_url=base_url) as manager:
-        return await manager.send_data(data)
+        result = await manager.send_data(data)
+        return result  # type: ignore[no-any-return]

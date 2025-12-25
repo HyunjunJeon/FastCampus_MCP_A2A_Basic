@@ -10,7 +10,7 @@ Connection Pooling과 리소스 관리를 위한 최적화된 HTTP 클라이언�
 - 리소스 정리
 """
 
-from typing import Optional, Dict, Any, Union
+from typing import Optional, Dict, Any, Union, AsyncIterator
 from contextlib import asynccontextmanager
 import httpx
 from httpx import AsyncClient, Limits, Timeout
@@ -32,13 +32,13 @@ class OptimizedHTTPClient:
     _instance: Optional["OptimizedHTTPClient"] = None
     _clients: Dict[str, AsyncClient] = {}
 
-    def __new__(cls):
+    def __new__(cls) -> "OptimizedHTTPClient":
         """싱글톤 패턴 구현"""
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self):
+    def __init__(self) -> None:
         """HTTP 클라이언트 초기화"""
         if not hasattr(self, "initialized"):
             # Connection Pool 설정
@@ -96,10 +96,10 @@ class OptimizedHTTPClient:
             http2=False,
         )
         if isinstance(base_url, str) and base_url:
-            client = AsyncClient(base_url=base_url, **common_kwargs)
+            client = AsyncClient(base_url=base_url, **common_kwargs)  # type: ignore[arg-type]
         else:
             # base_url이 None/빈 문자열이면 전달하지 않음 (httpx가 None을 허용하지 않음)
-            client = AsyncClient(**common_kwargs)
+            client = AsyncClient(**common_kwargs)  # type: ignore[arg-type]
 
         # 클라이언트 저장
         self._clients[client_id] = client
@@ -112,8 +112,8 @@ class OptimizedHTTPClient:
         self,
         base_url: Optional[str] = None,
         headers: Optional[Dict[str, str]] = None,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> AsyncIterator[AsyncClient]:
         """
         컨텍스트 매니저로 HTTP 세션 관리
 
@@ -124,7 +124,7 @@ class OptimizedHTTPClient:
         client = None
         try:
             client = AsyncClient(
-                base_url=base_url,
+                base_url=base_url,  # type: ignore[arg-type]
                 headers=headers or {},
                 timeout=self.default_timeout,
                 limits=self.default_limits,
@@ -135,7 +135,7 @@ class OptimizedHTTPClient:
             if client:
                 await client.aclose()
 
-    async def close_client(self, client_id: str):
+    async def close_client(self, client_id: str) -> None:
         """
         특정 클라이언트 종료
 
@@ -147,7 +147,7 @@ class OptimizedHTTPClient:
             del self._clients[client_id]
             logger.debug(f"Closed HTTP client: {client_id}")
 
-    async def close_all(self):
+    async def close_all(self) -> None:
         """모든 클라이언트 종료"""
         for client_id in list(self._clients.keys()):
             await self.close_client(client_id)
@@ -160,7 +160,7 @@ class OptimizedHTTPClient:
         exceptions=(httpx.NetworkError, httpx.TimeoutException),
     )
     async def request(
-        self, method: str, url: str, client_id: Optional[str] = None, **kwargs
+        self, method: str, url: str, client_id: Optional[str] = None, **kwargs: Any
     ) -> httpx.Response:
         """
         HTTP 요청 실행 (자동 재시도 포함)
@@ -204,27 +204,32 @@ class OptimizedHTTPClient:
                 message=f"Request failed: {str(e)}", api_name=url, cause=e
             )
 
-    async def get(self, url: str, **kwargs) -> httpx.Response:
+    async def get(self, url: str, **kwargs: Any) -> httpx.Response:
         """GET 요청"""
-        return await self.request("GET", url, **kwargs)
+        return await self.request("GET", url, **kwargs)  # type: ignore[no-any-return]
 
-    async def post(self, url: str, **kwargs) -> httpx.Response:
+    async def post(self, url: str, **kwargs: Any) -> httpx.Response:
         """POST 요청"""
-        return await self.request("POST", url, **kwargs)
+        return await self.request("POST", url, **kwargs)  # type: ignore[no-any-return]
 
-    async def put(self, url: str, **kwargs) -> httpx.Response:
+    async def put(self, url: str, **kwargs: Any) -> httpx.Response:
         """PUT 요청"""
-        return await self.request("PUT", url, **kwargs)
+        return await self.request("PUT", url, **kwargs)  # type: ignore[no-any-return]
 
-    async def delete(self, url: str, **kwargs) -> httpx.Response:
+    async def delete(self, url: str, **kwargs: Any) -> httpx.Response:
         """DELETE 요청"""
-        return await self.request("DELETE", url, **kwargs)
+        return await self.request("DELETE", url, **kwargs)  # type: ignore[no-any-return]
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "OptimizedHTTPClient":
         """비동기 컨텍스트 매니저 진입"""
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(
+        self,
+        exc_type: Optional[type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[Any]
+    ) -> None:
         """비동기 컨텍스트 매니저 종료"""
         await self.close_all()
 
@@ -277,8 +282,8 @@ class APIClientBase:
         )
 
     async def _request(
-        self, method: str, endpoint: str, **kwargs
-    ) -> Union[Dict[str, Any], list]:
+        self, method: str, endpoint: str, **kwargs: Any
+    ) -> Union[Dict[str, Any], list[Any]]:
         """
         API 요청 실행
 
@@ -296,27 +301,27 @@ class APIClientBase:
             response = await http_client.request(
                 method=method, url=url, headers=self.headers, **kwargs
             )
-            return response.json()
+            return response.json()  # type: ignore[no-any-return]
 
         except Exception as e:
             logger.error(f"API request failed: {url} - {e}")
             raise
 
-    async def get(self, endpoint: str, **kwargs) -> Union[Dict[str, Any], list]:
+    async def get(self, endpoint: str, **kwargs: Any) -> Union[Dict[str, Any], list[Any]]:
         """GET 요청"""
         return await self._request("GET", endpoint, **kwargs)
 
-    async def post(self, endpoint: str, **kwargs) -> Union[Dict[str, Any], list]:
+    async def post(self, endpoint: str, **kwargs: Any) -> Union[Dict[str, Any], list[Any]]:
         """POST 요청"""
         return await self._request("POST", endpoint, **kwargs)
 
-    async def close(self):
+    async def close(self) -> None:
         """클라이언트 종료"""
         await http_client.close_client(self.__class__.__name__)
 
 
 # 리소스 정리를 위한 종료 핸들러
-async def cleanup_http_clients():
+async def cleanup_http_clients() -> None:
     """
     애플리케이션 종료 시 HTTP 클라이언트 정리
 
@@ -340,13 +345,13 @@ async def cleanup_http_clients():
 class HTTPMetrics:
     """HTTP 요청 메트릭 수집"""
 
-    def __init__(self):
-        self.request_count = 0
-        self.error_count = 0
-        self.total_duration = 0.0
-        self.request_durations = []
+    def __init__(self) -> None:
+        self.request_count: int = 0
+        self.error_count: int = 0
+        self.total_duration: float = 0.0
+        self.request_durations: list[float] = []
 
-    def record_request(self, duration: float, success: bool = True):
+    def record_request(self, duration: float, success: bool = True) -> None:
         """요청 메트릭 기록"""
         self.request_count += 1
         self.total_duration += duration

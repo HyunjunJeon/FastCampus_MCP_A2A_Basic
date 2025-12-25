@@ -39,16 +39,20 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 # 프로젝트 루트 디렉토리 설정
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(PROJECT_ROOT)
+from pathlib import Path
 
-# src 패키지를 직접 임포트할 수 있도록 보조 경로 추가 (예: from a2a_integration ... 호환)
-src_path = os.path.join(PROJECT_ROOT, "src")
-if src_path not in sys.path:
-    sys.path.append(src_path)
+PROJECT_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 # 프로젝트 루트의 .env 파일 로드 (override=True로 기존 환경변수 덮어쓰기)
 load_dotenv(os.path.join(PROJECT_ROOT, ".env"), override=True)
+
+# A2A 관련 환경변수 강제 설정 (누락 방지)
+os.environ.setdefault("A2A_TASK_STORE", "redis")
+os.environ.setdefault("A2A_TASK_REDIS_URL", "redis://localhost:6379/0")
+os.environ.setdefault("A2A_TASK_TTL_SECONDS", "3600")
+
 # Step4 데모에서는 내부 그래프의 HITL을 비활성화하고
 # UI에서 단일 승인 루프만 관리하도록 한다 (중복 승인 방지)
 os.environ.setdefault("ENABLE_HITL", "0")
@@ -58,7 +62,6 @@ os.environ.setdefault("ALLOW_CLARIFICATION", "0")
 
 from a2a.types import AgentSkill
 
-# HITL 컴포넌트 임포트
 from src.hitl.manager import hitl_manager
 from src.hitl.storage import approval_storage
 
@@ -76,10 +79,11 @@ from src.utils.http_client import http_client
 
 A2A_DEFAULT_MODES = ["text/plain", "application/json", "text/markdown"]
 
+
 async def start_hitl_server():
     """HITL 웹 서버 자동 시작"""
 
-    print("🚀 HITL 웹 서버 시작 중...")
+    print("[INFO] HITL 웹 서버 시작 중...")
 
     try:
         # HITL 서버 시작 (백그라운드)
@@ -110,7 +114,7 @@ async def start_hitl_server():
             if process.poll() is not None:
                 stdout, stderr = process.communicate()
                 print(
-                    f"❌ HITL 서버 프로세스가 종료되었습니다 (exit code: {process.returncode})"
+                    f"[ERROR] HITL 서버 프로세스가 종료되었습니다 (exit code: {process.returncode})"
                 )
                 if stderr:
                     print(f"   에러: {stderr[:200]}")
@@ -123,7 +127,7 @@ async def start_hitl_server():
                     timeout=2,
                 )
                 if resp.status_code == 200:
-                    print(f"✅ HITL 웹 서버 정상 시작됨 ({i + 1}초 소요)")
+                    print(f"[SUCCESS] HITL 웹 서버 정상 시작됨 ({i + 1}초 소요)")
                     return process
             except Exception:
                 pass
@@ -132,13 +136,14 @@ async def start_hitl_server():
                 print(f"   ... 초기화 중 ({i + 1}/10초)")
 
         # 10초 후에도 응답하지 않으면 실패
-        print("❌ HITL 서버 시작 타임아웃 (10초)")
+        print("[ERROR] HITL 서버 시작 타임아웃 (10초)")
         process.terminate()
         return None
 
     except Exception as e:
-        print(f"❌ HITL 서버 시작 실패: {e}")
+        print(f"[ERROR] HITL 서버 시작 실패: {e}")
         return None
+
 
 async def start_a2a_deep_research_servers():
     """Step3와 동일한 포트(8090, 8091, 8092)로 3개의 A2A 임베디드 서버를 기동"""
@@ -180,9 +185,11 @@ async def start_a2a_deep_research_servers():
         s_info = await s_ctx.__aenter__()
         async_contexts.append(("SupervisorA2AGraph", s_ctx))
         server_infos.append(s_info)
-        print(f"✅ SupervisorA2AGraph 임베디드 서버 준비 완료: {s_info.get('base_url')}")
+        print(
+            f"[SUCCESS] SupervisorA2AGraph 임베디드 서버 준비 완료: {s_info.get('base_url')}"
+        )
     except Exception as e:
-        print(f"⚠️ SupervisorA2AGraph 시작 실패: {e}")
+        print(f"[WARNING] SupervisorA2AGraph 시작 실패: {e}")
 
     # 2) Researcher A2A 그래프 (8091)
     try:
@@ -217,9 +224,11 @@ async def start_a2a_deep_research_servers():
         r_info = await r_ctx.__aenter__()
         async_contexts.append(("ResearcherA2AGraph", r_ctx))
         server_infos.append(r_info)
-        print(f"✅ ResearcherA2AGraph 임베디드 서버 준비 완료: {r_info.get('base_url')}")
+        print(
+            f"[SUCCESS] ResearcherA2AGraph 임베디드 서버 준비 완료: {r_info.get('base_url')}"
+        )
     except Exception as e:
-        print(f"⚠️ ResearcherA2AGraph 시작 실패: {e}")
+        print(f"[WARNING] ResearcherA2AGraph 시작 실패: {e}")
 
     # 3) DeepResearch(HITL) A2A 그래프 (8090)
     try:
@@ -253,7 +262,9 @@ async def start_a2a_deep_research_servers():
         d_info = await d_ctx.__aenter__()
         async_contexts.append(("DeepResearchA2AGraph", d_ctx))
         server_infos.append(d_info)
-        print(f"✅ DeepResearchA2AGraph 임베디드 서버 준비 완료: {d_info.get('base_url')}")
+        print(
+            f"[SUCCESS] DeepResearchA2AGraph 임베디드 서버 준비 완료: {d_info.get('base_url')}"
+        )
         # DeepResearch A2A URL 환경변수로 노출 및 즉시 헬스체크
         try:
             deep_url = d_info.get("base_url", f"http://localhost:{d_port}")
@@ -263,58 +274,79 @@ async def start_a2a_deep_research_servers():
                 timeout=5,
             )
             if resp.status_code == 200:
-                print(f"✅ DeepResearch A2A 헬스체크 성공: {deep_url}")
+                print(f"[SUCCESS] DeepResearch A2A 헬스체크 성공: {deep_url}")
             else:
-                print(f"⚠️ DeepResearch A2A 헬스체크 비정상 응답: HTTP {resp.status_code}")
+                print(
+                    f"[WARNING] DeepResearch A2A 헬스체크 비정상 응답: HTTP {resp.status_code}"
+                )
         except Exception as e:
-            print(f"⚠️ DeepResearch A2A 헬스체크 실패: {e}")
+            print(f"[WARNING] DeepResearch A2A 헬스체크 실패: {e}")
     except Exception as e:
-        print(f"⚠️ DeepResearchA2AGraph 시작 실패: {e}")
+        print(f"[WARNING] DeepResearchA2AGraph 시작 실패: {e}")
 
-    print(f"✅ 총 {len(server_infos)}개의 A2A 임베디드 서버 준비 완료 (예상 3)")
+    print(f"[SUCCESS] 총 {len(server_infos)}개의 A2A 임베디드 서버 준비 완료 (예상 3)")
     if len(server_infos) < 3:
-        print("⚠️ 일부 서버가 시작되지 않았습니다. 로그를 확인하세요.")
+        print("[WARNING] 일부 서버가 시작되지 않았습니다. 로그를 확인하세요.")
     return async_contexts, server_infos
+
 
 async def check_system_status():
     """시스템 상태 확인 및 자동 시작"""
-    print("\n🔍 시스템 상태 확인")
+    print("\n[INFO] 시스템 상태 확인")
     print("=" * 60)
 
     hitl_server_process = None
 
-    # Redis 확인
+    # Redis 연결 테스트 강화
     try:
         import redis.asyncio as aioredis
 
         r = aioredis.Redis(host="localhost", port=6379)
         await r.ping()
-        print("✅ Redis: 정상")
-    except Exception:
-        print("❌ Redis: 연결 실패")
+        await r.close()
+        print("[SUCCESS] Redis: 정상")
+    except Exception as e:
+        print(f"[ERROR] Redis: 연결 실패 - {e}")
         print(
-            "   💡 Redis 시작: docker-compose -f docker/docker-compose.mcp.yml up -d redis"
+            "   [INFO] Redis 시작: docker-compose -f docker/docker-compose.mcp.yml up -d redis"
         )
+
+    # MCP 서버 상태 확인 추가
+    mcp_services = [
+        ("http://localhost:3000/health", "ArXiv MCP"),
+        ("http://localhost:3001/health", "Tavily MCP"),
+        ("http://localhost:3002/health", "Serper MCP"),
+    ]
+
+    for url, name in mcp_services:
+        try:
+            resp = await http_client.get(url, timeout=2)
+            if resp.status_code == 200:
+                print(f"[SUCCESS] {name}: 정상")
+            else:
+                print(f"[ERROR] {name}: 응답 오류")
+        except Exception as e:
+            print(f"[ERROR] {name}: 연결 실패 - {e}")
 
     # HITL API 확인 및 자동 시작
     try:
         resp = await http_client.get(
-            "http://localhost:8000/health", 
+            "http://localhost:8000/health",
             timeout=5,
         )
         if resp.status_code == 200:
-            print("✅ HITL API: 정상")
+            print("[SUCCESS] HITL API: 정상")
         else:
-            print("❌ HITL API: 응답 오류")
+            print("[ERROR] HITL API: 응답 오류")
     except Exception:
-        print("⚠️  HITL API: 연결 실패 - 자동 시작 시도")
+        print("[WARNING]  HITL API: 연결 실패 - 자동 시작 시도")
         hitl_server_process = await start_hitl_server()
         if hitl_server_process:
             pass  # 서버가 시작됨
         else:
-            print("❌ HITL API 자동 시작 실패")
+            print("[ERROR] HITL API 자동 시작 실패")
 
-    # A2A Agents 확인 (Supervisor:8090, Researcher:8091, Deep(HITL):8092)
+    # A2A Agents 확인 (Supervisor:8092, Researcher:8091, Deep(HITL):8090)
     async def _check(url: str, name: str):
         try:
             resp = await http_client.get(
@@ -322,17 +354,21 @@ async def check_system_status():
                 timeout=5,
             )
             if resp.status_code == 200:
-                print(f"✅ {name}: 정상")
+                print(f"[SUCCESS] {name}: 정상")
             else:
-                print(f"❌ {name}: 응답 오류")
+                print(f"[ERROR] {name}: 응답 오류")
         except Exception:
-            print(f"❌ {name}: 연결 실패")
+            print(f"[ERROR] {name}: 연결 실패")
 
     await _check("http://localhost:8092/.well-known/agent-card.json", "Supervisor A2A")
     await _check("http://localhost:8091/.well-known/agent-card.json", "Researcher A2A")
-    await _check("http://localhost:8090/.well-known/agent-card.json", "DeepResearch Control(HITL) A2A")
+    await _check(
+        "http://localhost:8090/.well-known/agent-card.json",
+        "DeepResearch Control(HITL) A2A",
+    )
 
     return hitl_server_process
+
 
 async def run_a2a_deep_research_hitl_demo():
     """HITL DeepResearch 데모 실행"""
@@ -346,41 +382,45 @@ async def run_a2a_deep_research_hitl_demo():
                 return True
             except Exception:
                 return False
+
         async def cleanup(self):
             try:
                 await approval_storage.disconnect()
                 await hitl_manager.shutdown()
             except Exception:
                 pass
+
         @property
         def test_results(self):
             return []
+
         def generate_test_report(self):
             return 1.0
+
     tester = _Noop()
     hitl_server_process = None
     a2a_contexts: list[tuple[str, any]] = []
 
     try:
         # 1. 시스템 상태 확인
-        print("\n🔍 1단계: 시스템 상태 확인")
+        print("\n[INFO] 1단계: 시스템 상태 확인")
         hitl_server_process = await check_system_status()
 
         # 2. HITL 시스템 초기화
-        print("\n⚡ 2단계: HITL 시스템 초기화")
+        print("\n[INFO] 2단계: HITL 시스템 초기화")
         if not await tester.initialize_hitl_system():
-            print("❌ HITL 시스템 초기화 실패. 테스트를 중단합니다.")
+            print("[ERROR] HITL 시스템 초기화 실패. 테스트를 중단합니다.")
             return False
 
         # 2-1. A2A 서버들(3개) 시작 - Step3와 동일 포트 사용
         try:
             a2a_contexts, server_infos = await start_a2a_deep_research_servers()
         except Exception as e:
-            print(f"❌ A2A 서버 시작 실패: {e}")
+            print(f"[ERROR] A2A 서버 시작 실패: {e}")
             return False
 
         # 3. CLI에서 연구 실행 → 결과만 UI에서 확인/승인
-        print("\n🧪 3단계: CLI에서 연구 실행 후 UI로 승인/거절")
+        print("\n[INFO] 3단계: CLI에서 연구 실행 후 UI로 승인/거절")
         print("- UI는 결과 확인 및 승인/거절/피드백 입력에만 사용합니다.")
         print("- 대시보드 열기: http://localhost:8000/hitl")
 
@@ -388,7 +428,9 @@ async def run_a2a_deep_research_hitl_demo():
         deep_url = os.environ.get("HITL_DEEP_RESEARCH_A2A_URL", "http://localhost:8090")
 
         # 실행 주제
-        topic = os.environ.get("HITL_DEMO_TOPIC", "OpenAI 가 최근에 발표한 오픈소스 모델에 대한 심층 분석")
+        topic = os.environ.get(
+            "HITL_DEMO_TOPIC", "OpenAI 가 최근에 발표한 오픈소스 모델에 대한 심층 분석"
+        )
 
         # 개정 루프 한도
         from src.config import ResearchConfig
@@ -405,16 +447,20 @@ async def run_a2a_deep_research_hitl_demo():
             - 보고서가 없으면 빈 문자열을 반환한다.
             """
             async with A2AClientManager(base_url=deep_url) as client:
-                merged = await client.send_data_merged({
-                    "messages": [{"role": "human", "content": query_text}]
-                })
-                return (merged.get("final_report") or "") if isinstance(merged, dict) else ""
+                merged = await client.send_data_merged(
+                    {"messages": [{"role": "human", "content": query_text}]}
+                )
+                return (
+                    (merged.get("final_report") or "")
+                    if isinstance(merged, dict)
+                    else ""
+                )
 
         # 3-1) 최종 보고서 생성 먼저 수행
-        print(f"\n🔎 연구 주제: {topic}")
+        print(f"\n[INFO] 연구 주제: {topic}")
         final_report = await _run_deep_research(topic)
         if not isinstance(final_report, str) or not final_report.strip():
-            print("❌ 최종 보고서를 생성하지 못했습니다.")
+            print("[ERROR] 최종 보고서를 생성하지 못했습니다.")
             return False
 
         # 3-2) 최종보고서 승인 요청 생성 (UI에서 상세보기/승인/거절)
@@ -433,13 +479,22 @@ async def run_a2a_deep_research_hitl_demo():
             priority="high",
         )
 
-        print("\n⏳ 승인 대기 중... (UI(localhost:8000)에서 승인/거절하세요)")
-        decision = await hitl_manager.wait_for_approval(request.request_id, auto_approve_on_timeout=False)
+        print("\n[INFO] 승인 대기 중... (UI(localhost:8000)에서 승인/거절하세요)")
+        decision = await hitl_manager.wait_for_approval(
+            request.request_id, auto_approve_on_timeout=False
+        )
 
-        while decision and getattr(decision, "status", None) and getattr(decision.status, "value", "") == "rejected" and revision_count < max_loops:
+        while (
+            decision
+            and getattr(decision, "status", None)
+            and getattr(decision.status, "value", "") == "rejected"
+            and revision_count < max_loops
+        ):
             revision_count += 1
-            feedback = getattr(decision, "decision_reason", "개선 요청사항을 반영해 주세요.")
-            print(f"❗ 거부됨 → 피드백 반영 재실행 {revision_count}/{max_loops}")
+            feedback = getattr(
+                decision, "decision_reason", "개선 요청사항을 반영해 주세요."
+            )
+            print(f"[WARNING] 거부됨 → 피드백 반영 재실행 {revision_count}/{max_loops}")
 
             # 피드백을 반영해 보고서 개선 요청
             improved_query = (
@@ -464,22 +519,33 @@ async def run_a2a_deep_research_hitl_demo():
                 timeout_seconds=600,
                 priority="high",
             )
-            print("⏳ 개정본 승인 대기 중...")
-            decision = await hitl_manager.wait_for_approval(request.request_id, auto_approve_on_timeout=False)
+            print("[INFO] 개정본 승인 대기 중...")
+            decision = await hitl_manager.wait_for_approval(
+                request.request_id, auto_approve_on_timeout=False
+            )
 
         # 종료 조건 평가
-        if decision and getattr(decision, "status", None) and getattr(decision.status, "value", "") in {"approved", "auto_approved"}:
-            print("\n✅ 최종 승인 완료!")
+        if (
+            decision
+            and getattr(decision, "status", None)
+            and getattr(decision.status, "value", "") in {"approved", "auto_approved"}
+        ):
+            print("\n[SUCCESS] 최종 승인 완료!")
             return True
-        elif revision_count >= max_loops and decision and getattr(decision, "status", None) and getattr(decision.status, "value", "") == "rejected":
-            print("\n⚠️ 개정 한도 초과로 종료합니다 (승인 미획득)")
+        elif (
+            revision_count >= max_loops
+            and decision
+            and getattr(decision, "status", None)
+            and getattr(decision.status, "value", "") == "rejected"
+        ):
+            print("\n[WARNING] 개정 한도 초과로 종료합니다 (승인 미획득)")
             return False
         else:
-            print("\n⚠️ 승인 플로우가 정상적으로 완료되지 않았습니다.")
+            print("\n[WARNING] 승인 플로우가 정상적으로 완료되지 않았습니다.")
             return False
 
     except Exception as e:
-        print(f"\n💥 데모 실행 중 오류 발생: {e}")
+        print(f"\n[ERROR] 데모 실행 중 오류 발생: {e}")
         import traceback
 
         traceback.print_exc()
@@ -488,18 +554,18 @@ async def run_a2a_deep_research_hitl_demo():
     finally:
         # 임베디드 A2A 서버 정리
         if a2a_contexts:
-            print("\n🧹 A2A 임베디드 서버 정리 중...")
+            print("\n[INFO] A2A 임베디드 서버 정리 중...")
             for name, ctx in reversed(a2a_contexts):
                 try:
                     await ctx.__aexit__(None, None, None)
-                    print(f"✅ {name} 안전하게 정리됨")
+                    print(f"[SUCCESS] {name} 안전하게 정리됨")
                 except Exception as e:
-                    print(f"⚠️ {name} 정리 중 오류: {e}")
+                    print(f"[WARNING] {name} 정리 중 오류: {e}")
         # HITL 웹 서버 정리
         try:
             if hitl_server_process and hitl_server_process.poll() is None:
                 hitl_server_process.terminate()
-                print("✅ HITL 웹 서버 종료 요청")
+                print("[SUCCESS] HITL 웹 서버 종료 요청")
         except Exception:
             pass
 
@@ -523,6 +589,7 @@ def _enable_file_logging_for_step(step_number: int) -> str:
         def __init__(self, stream, file):
             self._stream = stream
             self._file = file
+
         def write(self, data):
             try:
                 self._stream.write(data)
@@ -532,6 +599,7 @@ def _enable_file_logging_for_step(step_number: int) -> str:
                 self._file.write(data)
             except Exception:
                 pass
+
         def flush(self):
             try:
                 self._stream.flush()
@@ -550,14 +618,14 @@ def _enable_file_logging_for_step(step_number: int) -> str:
 
 if __name__ == "__main__":
     print("""
-    📌 실행 전 확인사항:
+    [INFO] 실행 전 확인사항:
     1. Redis가 실행 중인지 확인
        - docker-compose -f docker/docker-compose.mcp.yml up -d redis
     2. (선택) 웹 대시보드 접속 가능한지 확인
        - http://localhost:8000/hitl
        (본 스크립트는 HITL 웹 서버와 A2A 서버를 자동 기동합니다)
     
-    📌 HITL 개념:
+    [INFO] HITL 개념:
     - Human-In-The-Loop: AI와 인간의 협업
     - 중요한 결정은 인간이 승인
     - 실시간 웹 대시보드로 관리
@@ -566,14 +634,14 @@ if __name__ == "__main__":
 
     try:
         log_file = _enable_file_logging_for_step(4)
-        print(f"📝 로그 파일: {log_file}")
+        print(f"[INFO] 로그 파일: {log_file}")
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n\n🛑 프로그램이 사용자에 의해 중단되었습니다.")
-        print("✅ 안전하게 종료됩니다.")
+        print("\n\n[INFO] 프로그램이 사용자에 의해 중단되었습니다.")
+        print("[SUCCESS] 안전하게 종료됩니다.")
     except Exception as e:
-        print(f"\n❌ 오류 발생: {e}")
-        print("\n🔧 문제 해결:")
+        print(f"\n[ERROR] 오류 발생: {e}")
+        print("\n[INFO] 문제 해결:")
         print("1. HITL 시스템이 실행 중인지 확인하세요.")
         print("2. Redis 서비스 상태를 확인하세요.")
         print("3. 필요한 환경 변수가 설정되었는지 확인하세요.")

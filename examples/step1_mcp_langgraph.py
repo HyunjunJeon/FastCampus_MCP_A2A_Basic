@@ -33,7 +33,8 @@ from langchain_core.runnables import RunnableConfig
 
 # 프로젝트 루트 디렉토리 설정
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(PROJECT_ROOT)
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 # 프로젝트 루트의 .env 파일 로드 (import 전에 먼저 로드, override=True로 기존 환경변수 덮어쓰기)
 load_dotenv(os.path.join(PROJECT_ROOT, ".env"), override=True)
@@ -44,11 +45,11 @@ from src.utils.env_validator import validate_environment, print_env_report
 # 환경 변수 검증
 try:
     if not validate_environment(raise_on_error=True):
-        print("⚠️ 환경 변수 검증 실패. 아래 리포트를 확인하세요:")
+        print("[WARNING] 환경 변수 검증 실패. 아래 리포트를 확인하세요:")
         print_env_report()
         sys.exit(1)
 except ValueError as e:
-    print(f"❌ 환경 변수 오류: {e}")
+    print(f"[ERROR] 환경 변수 오류: {e}")
     print_env_report()
     sys.exit(1)
 
@@ -89,7 +90,9 @@ async def main():
                 "thread_id": str(uuid4()),
             }
         )
-        async for chunk in agent.graph.astream({"messages": [HumanMessage(content=query)]}, config=lg_config):
+        async for chunk in agent.graph.astream(
+            {"messages": [HumanMessage(content=query)]}, config=lg_config
+        ):
             if isinstance(chunk, dict):
                 for node_state in chunk.values():
                     messages = node_state.get("messages", [])
@@ -110,7 +113,7 @@ async def main():
 
 if __name__ == "__main__":
     print("""
-        📌 실행 전 확인사항:
+        [INFO] 실행 전 확인사항:
         1. MCP - TAVILY 서버가 실행 중인지 확인 (포트 3001)
         2. OPENAI_API_KEY, TAVILY_API_KEY 환경변수가 설정되어 있는지 확인
     """)

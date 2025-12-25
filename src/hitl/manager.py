@@ -1,9 +1,28 @@
-"""
-HITL 매니저 - Human-In-The-Loop 매니저
+"""HITL 매니저 - Human-In-The-Loop 워크플로우 관리자.
+
+이 모듈은 A2A 프로토콜 기반 에이전트 시스템에서 인간 승인이 필요한 작업의
+요청, 대기, 승인/거부 프로세스를 관리합니다.
+
+주요 기능:
+    - 승인 요청 생성 및 라이프사이클 관리
+    - Redis 기반 상태 영속화 및 Pub/Sub 이벤트 처리
+    - WebSocket을 통한 실시간 알림
+    - Deep Research A2A 연동
+
+Example:
+    >>> from src.hitl.manager import hitl_manager
+    >>> await hitl_manager.initialize()
+    >>> request = await hitl_manager.request_approval(
+    ...     agent_id="deep_research",
+    ...     approval_type=ApprovalType.FINAL_REPORT,
+    ...     title="연구 계획 승인",
+    ...     description="AI 연구 진행 계획",
+    ...     context={"task_id": "task-123"}
+    ... )
 """
 import asyncio
 import logging
-from typing import Optional, Dict, Any, List, Callable
+from typing import Optional, Dict, Any, List, Callable, Literal
 from datetime import datetime, timedelta
 
 from .models import ApprovalRequest, ApprovalStatus, ApprovalType, HITLPolicy
@@ -13,37 +32,52 @@ from src.utils.http_client import http_client
 
 logger = logging.getLogger(__name__)
 
+
 class HITLManager:
-    """Human-In-The-Loop 매니저"""
-    
+    """Human-In-The-Loop 승인 워크플로우 관리자.
+
+    A2A 프로토콜 기반 에이전트 시스템에서 인간 승인이 필요한 작업의
+    요청, 대기, 승인/거부 프로세스를 관리합니다.
+
+    Attributes:
+        policy: 승인 정책 설정 (자동 승인 타임아웃, 위임 허용 등).
+        notification_service: 승인 요청 알림 서비스.
+    """
+
     def __init__(
         self,
         policy: Optional[HITLPolicy] = None,
         notification_service: Optional[NotificationService] = None
-    ):
-        self.policy = policy or HITLPolicy()
+    ) -> None:
+        """HITLManager 인스턴스를 초기화합니다.
+
+        Args:
+            policy: HITL 정책 설정. None이면 기본값 사용.
+            notification_service: 알림 서비스. None이면 기본 인스턴스 생성.
+        """
+        self.policy = policy or HITLPolicy()  # type: ignore[call-arg]
         self.notification_service = notification_service or NotificationService()
-        self._approval_handlers: Dict[str, List[Callable]] = {}
-        self._background_tasks = set()
+        self._approval_handlers: Dict[str, List[Callable[..., Any]]] = {}
+        self._background_tasks: set[asyncio.Task[Any]] = set()
         
-    async def initialize(self):
+    async def initialize(self) -> None:
         """매니저 초기화"""
         await approval_storage.connect()
         await self.notification_service.initialize()
-        
+
         # 백그라운드 태스크 시작
         self._start_background_tasks()
-        
+
         logger.info("HITL Manager 초기화 완료")
-    
-    async def shutdown(self):
+
+    async def shutdown(self) -> None:
         """종료 처리"""
         # 백그라운드 태스크 취소
         for task in self._background_tasks:
             task.cancel()
-        
+
         await asyncio.gather(*self._background_tasks, return_exceptions=True)
-        
+
         await approval_storage.disconnect()
         await self.notification_service.shutdown()
 
@@ -62,9 +96,9 @@ class HITLManager:
             logger.error(f"ApprovalStorage 연결 보장 실패: {e}")
             raise
     
-    def _start_background_tasks(self):
+    def _start_background_tasks(self) -> None:
         """백그라운드 태스크 시작"""
-        def _attach_done(task: asyncio.Task):
+        def _attach_done(task: asyncio.Task[Any]) -> None:
             try:
                 task.result()
             except asyncio.CancelledError:
@@ -111,11 +145,11 @@ class HITLManager:
         return query
     
     async def _run_deep_research_with_progress(
-        self, 
-        query: str, 
-        request: ApprovalRequest, 
-        connection_manager
-    ):
+        self,
+        query: str,
+        request: ApprovalRequest,
+        connection_manager: Any
+    ) -> None:
         """진행상황을 브로드캐스트하면서 Deep Research 실행"""
         from datetime import datetime
         import asyncio
@@ -124,26 +158,27 @@ class HITLManager:
         
         try:
             # 단계별 진행상황 시뮬레이션 (실제 Deep Research 실행과 병행)
-            stages = [
+            stages: List[Dict[str, Any]] = [
                 {"stage": 1, "name": "계획 수립", "progress": 20, "action": "연구 계획을 수립하고 있습니다..."},
                 {"stage": 2, "name": "데이터 수집", "progress": 60, "action": "관련 데이터를 수집하고 있습니다..."},
                 {"stage": 3, "name": "분석 및 보고서 작성", "progress": 90, "action": "분석 결과를 정리하고 있습니다..."}
             ]
-            
+
             # Deep Research를 백그라운드에서 실행
             research_task = asyncio.create_task(self._execute_actual_research(query))
-            
+
             # 진행상황 업데이트
             for stage_info in stages:
                 if connection_manager:
+                    stage_num = int(stage_info["stage"])
                     progress_data = {
                         "request_id": request.request_id,
                         "task_id": request.task_id,
-                        "stage": stage_info["stage"],
+                        "stage": stage_num,
                         "stage_name": stage_info["name"],
                         "progress": stage_info["progress"],
                         "total_stages": 3,
-                        "estimated_time": f"{4 - stage_info['stage']}분 남음",
+                        "estimated_time": f"{4 - stage_num}분 남음",
                         "current_action": stage_info["action"],
                         "timestamp": datetime.now()
                     }
@@ -243,7 +278,7 @@ class HITLManager:
                 
                 # A2A 서버에 요청 전송 및 결과 수집
                 final_report = ""
-                research_metadata = {}
+                research_metadata: Dict[str, Any] = {}
                 
                 logger.info("A2A 요청 전송 중...")
                 
@@ -288,8 +323,8 @@ class HITLManager:
                 }
             
             finally:
-                # httpx 클라이언트 정리
-                await http_client.aclose()
+                # OptimizedHTTPClient는 세션 풀을 유지하므로 명시적 close 불필요
+                pass
             
         except Exception as e:
             logger.error(f"A2A Deep Research 실행 오류: {e}")
@@ -303,12 +338,12 @@ class HITLManager:
                 "messages_count": 0
             }
     
-    def set_connection_manager(self, connection_manager):
+    def set_connection_manager(self, connection_manager: Any) -> None:
         """WebSocket 연결 관리자 설정 (API 서버에서 호출)"""
         self._connection_manager = connection_manager
         logger.info("WebSocket 연결 관리자가 설정되었습니다.")
-    
-    async def _check_expired_approvals(self):
+
+    async def _check_expired_approvals(self) -> None:
         """만료된 승인 요청 확인 (주기적)"""
         while True:
             try:
@@ -325,7 +360,7 @@ class HITLManager:
             except Exception as e:
                 logger.error(f"만료 확인 오류: {e}")
     
-    async def _listen_for_events(self):
+    async def _listen_for_events(self) -> None:
         """Redis 이벤트 리스닝"""
         await approval_storage.subscribe_to_events([
             "approval:created",
@@ -357,7 +392,7 @@ class HITLManager:
         context: Dict[str, Any],
         options: Optional[List[str]] = None,
         timeout_seconds: Optional[int] = None,
-        priority: str = "medium"
+        priority: Literal["low", "medium", "high", "critical"] = "medium"
     ) -> ApprovalRequest:
         """승인 요청 생성"""
         # 저장소 연결 보장 (A2A 단독 구동 등 초기화 경로 누락 대비)
@@ -415,8 +450,11 @@ class HITLManager:
                     await self._handle_auto_approval(request_id)
                 else:
                     await self._handle_timeout(request_id)
-                
-                return await approval_storage.get_approval_request(request_id)
+
+                updated_request = await approval_storage.get_approval_request(request_id)
+                if updated_request is None:
+                    raise ValueError(f"승인 요청을 찾을 수 없습니다: {request_id}")
+                return updated_request
             
             # 대기
             await asyncio.sleep(1)
@@ -481,7 +519,7 @@ class HITLManager:
             
         return success
     
-    async def _handle_auto_approval(self, request_id: str):
+    async def _handle_auto_approval(self, request_id: str) -> None:
         """자동 승인 처리"""
         await approval_storage.update_approval_status(
             request_id,
@@ -490,10 +528,10 @@ class HITLManager:
             decision="자동 승인",
             reason="타임아웃으로 인한 자동 승인"
         )
-        
+
         await self._trigger_handlers(request_id, ApprovalStatus.AUTO_APPROVED)
-    
-    async def _handle_timeout(self, request_id: str):
+
+    async def _handle_timeout(self, request_id: str) -> None:
         """타임아웃 처리"""
         await approval_storage.update_approval_status(
             request_id,
@@ -502,10 +540,10 @@ class HITLManager:
             decision="타임아웃",
             reason="승인 요청 시간 초과"
         )
-        
+
         await self._trigger_handlers(request_id, ApprovalStatus.TIMEOUT)
-    
-    async def _handle_event(self, event: Dict[str, Any]):
+
+    async def _handle_event(self, event: Dict[str, Any]) -> None:
         """이벤트 처리"""
         channel = event['channel']
         data = event['data']
@@ -527,11 +565,11 @@ class HITLManager:
                         # datetime 직렬화 보정
                         for ts_field in ("created_at", "expires_at", "decided_at"):
                             value = req_dict.get(ts_field)
-                            try:
-                                if hasattr(value, "isoformat"):
+                            if value is not None and hasattr(value, "isoformat"):
+                                try:
                                     req_dict[ts_field] = value.isoformat()
-                            except Exception:
-                                pass
+                                except Exception:
+                                    pass
                         await connection_manager.broadcast({
                             "type": "approval_update",
                             "data": req_dict,
@@ -539,14 +577,14 @@ class HITLManager:
                 except Exception as e:
                     logger.error(f"승인 생성 브로드캐스트 오류: {e}")
     
-    def register_handler(self, status: ApprovalStatus, handler: Callable):
+    def register_handler(self, status: ApprovalStatus, handler: Callable[..., Any]) -> None:
         """상태 변경 핸들러 등록"""
         if status.value not in self._approval_handlers:
             self._approval_handlers[status.value] = []
-        
+
         self._approval_handlers[status.value].append(handler)
-    
-    async def _trigger_handlers(self, request_id: str, status: ApprovalStatus):
+
+    async def _trigger_handlers(self, request_id: str, status: ApprovalStatus) -> None:
         """핸들러 실행"""
         handlers = self._approval_handlers.get(status.value, [])
         request = await approval_storage.get_approval_request(request_id)
@@ -585,18 +623,17 @@ class HITLManager:
         except Exception as e:
             logger.error(f"보고서 스냅샷 저장 오류: {e}")
     
-    async def get_pending_approvals(self, **kwargs) -> List[ApprovalRequest]:
+    async def get_pending_approvals(self, **kwargs: Any) -> List[ApprovalRequest]:
         """대기 중인 승인 요청 조회"""
         await self._ensure_storage_connected()
         return await approval_storage.get_pending_approvals(**kwargs)
 
-    
-    async def get_approved_approvals(self, **kwargs) -> List[ApprovalRequest]:
+    async def get_approved_approvals(self, **kwargs: Any) -> List[ApprovalRequest]:
         """승인된 승인 요청 조회"""
         await self._ensure_storage_connected()
         return await approval_storage.get_approved_approvals(**kwargs)
-    
-    async def get_rejected_approvals(self, **kwargs) -> List[ApprovalRequest]:
+
+    async def get_rejected_approvals(self, **kwargs: Any) -> List[ApprovalRequest]:
         """거부된 승인 요청 조회"""
         await self._ensure_storage_connected()
         return await approval_storage.get_rejected_approvals(**kwargs)
