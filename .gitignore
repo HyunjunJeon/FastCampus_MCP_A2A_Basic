@@ -7,19 +7,31 @@ venv/
 .env
 
 # IDE & Cache & Python
-*.lock
 .python-version
-.vscode/
 __pycache__/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
 *.egg-info/
 
+# IDE
+*coverage*
+node_modules/
+
 # AI Folder
 shrimp_data/
 *mcp.json
 .serena/
+.cursor/
+.claude/
+.mcp.json
+CLAUDE.md
+CLAUDE-*.md
+shrimp_data/
+GEMINI.md
+GEMINI-*.md
+QWEN.md
+QWEN-*.md
 
 # Service
 reports/

@@ -1,16 +1,89 @@
 # MCP 와 A2A 로 개발하는 Multi Agent
 
-FastCampus 온라인강의 “MCP 와 A2A 로 개발하는 Multi Agent”(Part2 - Chapter2. LangGraph와 MCP & A2A) 실습 저장소입니다. 본 저장소는 Step 1 → 4를 순서대로 따라가면 멀티 에이전트 시스템이 완성되도록 구성되어 있습니다.
+FastCampus 온라인강의 "MCP 와 A2A 로 개발하는 Multi Agent"(Part2 - Chapter2. LangGraph와 MCP & A2A) 실습 저장소입니다. 본 저장소는 Step 1 → 4를 순서대로 따라가면 멀티 에이전트 시스템이 완성되도록 구성되어 있습니다.
 
 [제 강의 전용 할인 페이지](https://fastcampus.co.kr/secret_online_jhjagent)
 
 ---
 
-## 프로젝트 개요 및 인덱스
+## Quick Start (개발환경 설정)
 
-- 전체 인덱스: [code_index.md](code_index.md)
-- 소스 인덱스 허브: [src/code_index.md](src/code_index.md)
-- 하위 모듈 인덱스
+> **모든 수강생이 동일한 개발환경을 구성할 수 있도록 `setup.sh` 스크립트를 제공합니다.**
+
+### 1단계: uv 패키지 매니저 설치
+
+[uv](https://docs.astral.sh/uv/)는 Rust로 작성된 초고속 Python 패키지 관리자입니다.
+
+```bash
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# macOS (Homebrew)
+brew install uv
+
+# Windows (PowerShell)
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+설치 후 터미널을 재시작하세요.
+
+### 2단계: 개발환경 자동 설정
+
+```bash
+./setup.sh
+```
+
+이 스크립트는 다음 3가지를 자동으로 수행합니다:
+
+| 단계 | 설명 |
+|------|------|
+| **[1/3] uv 확인** | uv 설치 여부 확인, 미설치 시 안내 후 종료 |
+| **[2/3] 의존성 설치** | `uv sync --frozen` 실행 → `.venv` 생성 및 패키지 설치 |
+| **[3/3] VSCode 설정** | `.vscode/settings.json` 생성 → Python 인터프리터 자동 설정 |
+
+### 3단계: API 키 설정
+
+```bash
+cp .env.example .env
+```
+
+`.env` 파일을 열고 API 키를 입력하세요:
+
+```bash
+OPENAI_API_KEY=your_openai_api_key
+TAVILY_API_KEY=your_tavily_api_key
+SERPER_API_KEY=your_serper_api_key
+```
+
+- [OPENAI_API_KEY 발급](https://platform.openai.com/api-keys)
+- [TAVILY_API_KEY 발급](https://www.tavily.com/)
+- [SERPER_API_KEY 발급](https://serper.dev/)
+
+### 4단계: Docker 환경 시작 (MCP 서버)
+
+```bash
+./docker/mcp_docker.sh build   # 이미지 빌드
+./docker/mcp_docker.sh up      # 서비스 시작
+./docker/mcp_docker.sh test    # 헬스체크
+```
+
+### setup.sh 개별 명령어
+
+```bash
+./setup.sh          # 전체 설정 (기본값)
+./setup.sh uv       # uv 설치 확인만
+./setup.sh sync     # 의존성 설치만
+./setup.sh vscode   # VSCode 설정만
+./setup.sh help     # 도움말
+```
+
+---
+
+## 프로젝트 개요 및 코드 인덱스
+
+- 전체 코드 인덱스: [code_index.md](code_index.md)
+- 소스코드 인덱스 허브: [src/code_index.md](src/code_index.md)
+- 하위 모듈 코드 인덱스
   - A2A 통합: [src/a2a_integration/code_index.md](src/a2a_integration/code_index.md)
   - 설정: [src/config/code_index.md](src/config/code_index.md)
   - HITL 코어: [src/hitl/code_index.md](src/hitl/code_index.md)
@@ -32,10 +105,10 @@ FastCampus 온라인강의 “MCP 와 A2A 로 개발하는 Multi Agent”(Part2 
 
 권장 라이브러리/버전(정확한 버전은 `pyproject.toml` 참고):
 
-- LangGraph ≥ 0.6.2
-- FastMCP ≥ 2.11.0
-- LangChain MCP Adapters ≥ 0.1.9
-- a2a-sdk ≥ 0.3.0
+- LangGraph ≥ 1.0.0
+- FastMCP ≥ 2.14.0
+- LangChain MCP Adapters ≥ 0.2.0
+- a2a-sdk ≥ 0.3.22
 
 참고 문서 모음: `docs/`
 
@@ -46,45 +119,19 @@ FastCampus 온라인강의 “MCP 와 A2A 로 개발하는 Multi Agent”(Part2 
 
 ---
 
-## 설치 및 환경설정
+## MCP 서버 포트 정보
 
-1. 의존성 설치(uv)
-
-```bash
-uv venv
-uv sync
-```
-
-1. 루트 `.env` 생성 및 설정(항상 루트 `.env` 사용)
-
-- [OPENAI_API_KEY 발급 사이트](https://platform.openai.com/api-keys)
-- [TAVILY_API_KEY 발급 사이트](https://www.tavily.com/)
-- [SERPER.dev API KEY 발급 사이트](https://serper.dev/)
+| 서비스 | 포트 | 헬스체크 |
+|--------|------|----------|
+| ArXiv MCP | <http://localhost:3000> | `/health` |
+| Tavily MCP | <http://localhost:3001> | `/health` |
+| Serper MCP | <http://localhost:3002> | `/health` |
+| Redis Commander | <http://localhost:8081> | (admin/mcp2025) |
 
 ```bash
-OPENAI_API_KEY=your_openai_api_key
-TAVILY_API_KEY=your_tavily_api_key
-SERPER_API_KEY=your_serper_api_key
-```
-
-1. MCP 서버(도커) 실행/중지/헬스체크
-
-```bash
-# 빌드/기동/헬스체크
-./docker/mcp_docker.sh build
-./docker/mcp_docker.sh up
-./docker/mcp_docker.sh test
-
-# 중지 - 완전 삭제
+# MCP 서버 중지/삭제
 ./docker/mcp_docker.sh down
 ```
-
-기본 포트(health: /health)
-
-- ArXiv MCP: <http://localhost:3000>
-- Tavily MCP: <http://localhost:3001>
-- Serper MCP: <http://localhost:3002>
-- Redis Commander(개발 도구): <http://localhost:8081> (admin/mcp2025)
 
 ---
 
@@ -175,7 +222,18 @@ uv run pytest -q
 - HITL 통합 스펙: [steps/hitl_integration_spec.md](steps/hitl_integration_spec.md)
 - 레퍼런스: `docs/` 내 각 파일 참조(상단 “요구 사항” 섹션 링크)
 
-항상 이 README의 대주제(“MCP → A2A → 멀티에이전트 → HITL”)를 잊지 말고, 각 Step 문서의 지시를 순서대로 수행하세요.
+항상 이 README의 대주제(“MCP → A2A → 멀티에이전트 → HITL”)를 잊지 말고,  
+각 Step 문서의 지시를 순서대로 수행하세요.
+
+---
+
+## 업데이트 사항
+
+1. a2a-samples 추가(2025-12-26)
+조금 더 다양한 예제를 확인하실 수 있도록 a2a-samples 레포지토리를 내부에 포함했습니다.
+아주 쉬운 레벨의 내용부터 시작해서 langgraph-a2a 연동 샘플까지 다 포함되어 있습니다.
+
+강의 내용과 함께 보신다면 더욱 도움이 되실 것입니다.
 
 ---
 
